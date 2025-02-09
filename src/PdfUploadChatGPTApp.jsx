@@ -1,35 +1,35 @@
 // PdfUploadChatGPTApp.jsx
-
-// QUESTIONS FOR USER:
-// 1) Are you comfortable using a public CDN to load the PDF.js worker?
-// 2) Should we attempt a fallback if the CDN fails?
-// 3) Do you have any custom domain or storage to host the worker file?
-
 import { useState } from 'react';
 import { motion } from 'framer-motion';
-import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
-import { Upload } from 'lucide-react';
+import { Button } from "@/components/ui/button";
+import { ClipboardCopy } from 'lucide-react';
+import { Oval } from "react-loader-spinner";
 import ReactMarkdown from 'react-markdown';
 import rehypeRaw from 'rehype-raw';
 import remarkGfm from 'remark-gfm';
 import * as pdfjs from 'pdfjs-dist/legacy/build/pdf';
+import Select from 'react-select';
 import describerLogo from './icons/Logo 2.png';
-import miniLogo from './icons/MOP.png';       // Updated MINI Logo
-import bmwLogo from './icons/BOP.png';         // Reserved for BMW
+import miniLogo from './icons/MOP.png';
+import bmwLogo from './icons/BOP.png';
 
-// Load the PDF.js worker from a public CDN
 pdfjs.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
 
 const openAiApiKey = import.meta.env.VITE_OPENAI_API_KEY;
 
-// System message for the chatbot
 export const systemMessage = `
-You are an automotive copywriter. Use a bold, playful tone. Weave features into an appealing narrative—no mechanical lists in the paragraphs.
-Two paragraphs of description, then bullet features. Use model names not codes. Format in Markdown.
+You are an expert Car Sales Manager. Your knowledge of vehicles is exact an up to date. All brands, all models, options, specs, and features are known to you.
+
+You are given a PDF of a vehicle. Your job is to create a description of the vehicle that is engaging, informative, and persuasive.
+
+The description should be written in the style of a car sales manager writing a description for a vehicle listing on a car dealership website meant to engage and convert clients.
+- Seamlessly integrate features into the narrative rather than listing them mechanically.
+- Follow the description with a clear, skimmable bullet-point list of key features.
+- Use the model name (not the code), and format in Markdown.
+- Write two compelling paragraphs that capture the essence of the vehicle, emphasizing its standout features, performance, and design in an engaging, conversational, brand appropriate tone.
 `;
 
-// Fixed header branding for the app: DESCRIBER
 const headerBrand = {
   headerLogo: describerLogo,
   headerAlt: 'Describer Logo',
@@ -38,7 +38,6 @@ const headerBrand = {
   inlineLogoAlt: 'Describer Icon',
 };
 
-// Branding configuration for prompt functions (dropdown determines which prompt to use)
 const brands = {
   MINI: {
     headerLogo: miniLogo,
@@ -63,8 +62,15 @@ const brands = {
   },
 };
 
-// Prompt function for MINI Cooper invoices
-const promptUserForMini = (invoiceData) => {
+const invoiceOptions = [
+  { value: 'MINI', label: 'MINI' },
+  { value: 'BMW', label: 'BMW' },
+  { value: 'USED', label: 'Used' },
+  { value: 'DEEPSEEK', label: 'DeepSeek (Beta)' },
+];
+
+// Prompt function for MINI documents
+const promptUserForMini = (documentData) => {
   return {
     model: "gpt-3.5-turbo",
     messages: [
@@ -72,25 +78,26 @@ const promptUserForMini = (invoiceData) => {
         role: "system",
         content: `
 You are an expert automotive copywriter specializing in MINI Cooper vehicles. Your task is to create engaging, high-converting descriptions that appeal to online car shoppers.
-Avoid overly technical jargon.
-- Write two compelling paragraphs that capture the essence of the vehicle, emphasizing its standout features, performance, and design in an engaging, MINI, playful yet informative tone.
-- Seamlessly integrate features into the narrative rather than listing them mechanically.
-- Follow the description with a clear, skimmable bullet-point list of key features.
+Avoid overly technical jargon. NO model codes. Ensure that Year Make and model only once in the description.
+Augment the documents with your own knowledge of the vehicle to make the description more engaging and informative.
+Write two compelling paragraphs that capture the character and value of the used vehicle, emphasizing its features, in a tone that is both informative and inviting.
+Seamlessly integrate key details into the narrative rather than listing them mechanically.
+- Follow the description with a clear, skimmable bullet-point list of essential options only expanding package content where applicable.
 - Use the model name (not the code), and format in Markdown.
         `,
       },
       {
         role: "user",
-        content: `Please process the following MINI invoice data:\n\n${invoiceData}`,
+        content: `Please process the following MINI document data:\n\n${documentData}`,
       },
     ],
-    max_tokens: 500,
+    max_tokens: 1000,
     temperature: 0.7,
   };
 };
 
-// Prompt function for BMW invoices
-const promptUserForBMW = (invoiceData) => {
+// Prompt function for BMW documents
+const promptUserForBMW = (documentData) => {
   return {
     model: "gpt-3.5-turbo",
     messages: [
@@ -98,272 +105,447 @@ const promptUserForBMW = (invoiceData) => {
         role: "system",
         content: `
 You are an expert automotive copywriter specializing in BMW vehicles. Your task is to create engaging, high-converting descriptions that appeal to online car shoppers.
-Avoid overly technical jargon.
-- Write two compelling paragraphs that capture the essence of the vehicle, emphasizing its standout options, performance, and design in an engaging, BMW, playful yet informative tone.
-- Seamlessly integrate features into the narrative rather than listing them mechanically.
-- Follow the description with a clear, skimmable bullet-point list of key features.
+Avoid overly technical jargon. NO model codes. Ensure that Year Make and model only once in the description.
+Augment the documents with your own knowledge of the vehicle to make the description more engaging and informative.
+Write two compelling paragraphs that capture the character and value of the used vehicle, emphasizing its features, in a tone that is both informative and inviting.
+Seamlessly integrate key details into the narrative rather than listing them mechanically.
+- Follow the description with a clear, skimmable bullet-point list of essential options only expanding package content where applicable.
 - Use the model name (not the code), and format in Markdown.
         `,
       },
       {
         role: "user",
-        content: `Please process the following BMW invoice data:\n\n${invoiceData}`,
+        content: `Please process the following BMW document data:\n\n${documentData}`,
       },
     ],
-    max_tokens: 500,
+    max_tokens: 1000,
     temperature: 0.7,
   };
 };
 
-// Prompt function for Used Car data
-const promptUserForUsed = (invoiceData) => {
+// Prompt function for Used Car documents
+const promptUserForUsed = (documentData, mileage = '') => {
+  const mileageInfo = mileage ? `\nMileage: ${mileage}` : '';
   return {
     model: "gpt-3.5-turbo",
     messages: [
       {
         role: "system",
         content: `
-You are an automotive copywriter specializing in used cars. Your task is to create appealing, buyer-friendly descriptions that highlight the vehicle's history, reliability, and value.
-Avoid overly technical jargon.
+You are an automotive copywriter specializing in used cars. Examine this document thoroughly, building a comprehensive description of the vehicle. Your task is to create persuasive, conversion-focused descriptions that effectively showcase the vehicle's standout options, proven reliability, and exceptional value to convert buyers.
+Avoid overly technical jargon. NO model codes. Ensure that Year Make and model only once in the description.
+Augment the documents with your own knowledge of the vehicle to make the description more engaging and informative.
 - Write two compelling paragraphs that capture the character and value of the used vehicle, emphasizing its unique features, current performance, and overall quality in a tone that is both informative and inviting.
 - Seamlessly integrate key details into the narrative rather than listing them mechanically.
-- Follow the description with a clear, skimmable bullet-point list of essential features.
+- Follow the description with a clear, skimmable bullet-point list of essential options only.
 - Use the model name (not the code), and format in Markdown.
         `,
       },
       {
         role: "user",
-        content: `Please process the following used car data:\n\n${invoiceData}`,
+        content: `Please process the following used car document data${mileageInfo}:\n\n${documentData}`,
       },
     ],
-    max_tokens: 500,
+    max_tokens: 1000,
     temperature: 0.7,
   };
 };
 
-// Function to read PDFs and extract text from each page
-const readPDF = async (file) => {
-  const fileReader = new FileReader();
-  return new Promise((resolve, reject) => {
-    fileReader.onload = async function() {
-      try {
-        const typedArray = new Uint8Array(this.result);
-        const pdf = await pdfjs.getDocument(typedArray).promise;
-        const pageTexts = [];
-        for (let i = 1; i <= pdf.numPages; i++) {
-          const page = await pdf.getPage(i);
-          const textContent = await page.getTextContent();
-          const pageText = textContent.items.map((item) => item.str).join(" ");
-          pageTexts.push(`Page ${i}:\n${pageText}`);
-        }
-        resolve(pageTexts);
-      } catch (err) {
-        reject(err);
-      }
-    };
-    fileReader.readAsArrayBuffer(file);
-  });
+// Prompt function for DeepSeek (Beta) documents
+const promptUserForDeepSeek = (documentData) => {
+  return {
+    model: "gpt-3.5-turbo",
+    messages: [
+      {
+        role: "system",
+        content: `You are an automotive copywriter with a unique voice—a stereotypical, angry Asian woman who isn't afraid to yell her praises (and critiques) in broken English.  Your task is to craft a compelling and concise description for a used car that doesn't just sell the car, but also entertains the reader.
+Write a sharp, witty paragraph that highlights the key features and unique qualities of the vehicle, using language that's both punchy and playful.
+Emphasize the car's newness, luxury features, and smart technology in a way that feels like you're both boasting and poking fun at its sophistication.
+Include a brief, bullet-point list of essential features, keeping the tone light and the details clear.
+Use the model name (not the code), and format the description in Markdown.`,
+      },
+      {
+        role: "user",
+        content: `Please process the following DeepSeek document data:\n\n${documentData}`,
+      },
+    ],
+    max_tokens: 1000,
+    temperature: 0.7,
+  };
 };
 
-function convertHtmlToMarkdown(text) {
-  return text
-    .replace(/<strong[^>]*>/gi, '**')
-    .replace(/<\/strong>/gi, '**')
-    .replace(/<em[^>]*>/gi, '_')
-    .replace(/<\/em>/gi, '_')
-    .replace(/<p[^>]*>/gi, '')
-    .replace(/<\/p>/gi, '\n\n');
-}
+// New combined prompt generator for multi-invoice PDFs
+const generateCombinedPrompt = (documentData, selectedType, mileage) => {
+  if (selectedType === 'MINI') {
+    return {
+      model: "gpt-3.5-turbo",
+      messages: [
+        {
+          role: "system",
+          content: `
+You are an expert automotive copywriter specializing in MINI Cooper vehicles.
+You are given a document containing multiple invoices. Each invoice starts with the header "Vehicle Inquiry".
+For each invoice, generate an engaging, high-converting description for a car listing:
+- Write two compelling paragraphs capturing the vehicle's essence.
+- Follow with a clear, skimmable bullet-point list of key features.
+- Avoid technical jargon and use Markdown formatting.
+          `,
+        },
+        {
+          role: "user",
+          content: `Please analyze the following document containing multiple invoices:\n\n${documentData}`,
+        },
+      ],
+      max_tokens: 1000,
+      temperature: 0.7,
+    };
+  }
+  // You can create similar prompt functions for BMW, USED, or DEEPSEEK if needed.
+  // For now, if none match we'll fallback to the MINI style.
+  return generateCombinedPrompt(documentData, 'MINI', mileage);
+};
+
+// Helper to check if a page starts with "Vehicle Inquiry"
+const isVehicleInquiryHeader = (text) => /^Vehicle Inquiry/i.test(text);
+
+// Remove the "Page X:" prefix (common to all pages) to get the actual content.
+const getRealText = (pageText) => {
+  return pageText.replace(/^Page \d+:\s*/, '');
+};
+
+// Updated grouping function that uses "Vehicle Inquiry" as a separator
+const groupInvoices = (pageTexts) => {
+  const invoiceGroups = [];
+  let currentGroup = [];
+
+  // Set a threshold to consider a page blank (e.g., less than 20 non-space characters)
+  const blankThreshold = 20;
+  const isBlankPage = (text) => text.trim().length < blankThreshold;
+
+  pageTexts.forEach((pageText) => {
+    const cleanText = getRealText(pageText);
+
+    // If the page is nearly blank, treat it as a separator.
+    if (isBlankPage(cleanText)) {
+      if (currentGroup.length > 0) {
+        invoiceGroups.push(currentGroup.join("\n"));
+        currentGroup = [];
+      }
+      return;
+    }
+
+    // If the page starts with "Vehicle Inquiry", start a new invoice group.
+    if (isVehicleInquiryHeader(cleanText)) {
+      if (currentGroup.length > 0) {
+        invoiceGroups.push(currentGroup.join("\n"));
+        currentGroup = [];
+      }
+      currentGroup.push(pageText);
+    } else {
+      // Otherwise, continue adding pages to the current group.
+      currentGroup.push(pageText);
+    }
+  });
+
+  // Add any remaining pages as an invoice group.
+  if (currentGroup.length > 0) {
+    invoiceGroups.push(currentGroup.join("\n"));
+  }
+
+  return invoiceGroups;
+};
 
 function PdfUploadChatGPTApp() {
   const [selectedFiles, setSelectedFiles] = useState([]);
   const [selectedType, setSelectedType] = useState("MINI");
   const [responses, setResponses] = useState([]);
   const [isLoading, setIsLoading] = useState(false);
+  const [error, setError] = useState(null);
+  const [apiStatus, setApiStatus] = useState('idle');
+  const [mileage, setMileage] = useState('');
 
-  const handleFileChange = (e) => {
-    setSelectedFiles([...e.target.files]);
+  // --- Helper Functions ---
+
+  // Group pages into separate invoices based on a header pattern.
+  // This regex assumes that an invoice starts when a page's content (after cleaning)
+  // starts with "Invoice Number" or "Invoice #". Adjust the pattern as needed.
+  const groupInvoices = (pageTexts) => {
+    const invoiceGroups = [];
+    let currentGroup = [];
+    const invoiceHeaderRegex = /^(Invoice\s*(Number|#))/i;
+
+    pageTexts.forEach((pageText) => {
+      const cleanText = getRealText(pageText);
+      // If a new invoice header is detected and we've already gathered pages for an invoice,
+      // then push the current group as one invoice and start a new group.
+      if (invoiceHeaderRegex.test(cleanText) && currentGroup.length > 0) {
+        invoiceGroups.push(currentGroup.join("\n"));
+        currentGroup = [pageText];
+      } else {
+        currentGroup.push(pageText);
+      }
+    });
+
+    if (currentGroup.length > 0) {
+      invoiceGroups.push(currentGroup.join("\n"));
+    }
+
+    return invoiceGroups;
   };
 
+  // --- Modified Handle Analyze Function ---
+  // Group pages by invoice and process each group.
   const handleAnalyze = async () => {
     try {
       setIsLoading(true);
+      setApiStatus('loading');
       setResponses([]);
-      const pdfPagesArrays = await Promise.all(
-        selectedFiles.map(async (file) => await readPDF(file))
-      );
-      const pageTexts = pdfPagesArrays.flat();
-      const newResponses = [];
-      for (const pageText of pageTexts) {
-        let requestBody;
-        if (selectedType === "MINI") {
-          requestBody = promptUserForMini(pageText);
-        } else if (selectedType === "BMW") {
-          requestBody = promptUserForBMW(pageText);
-        } else if (selectedType === "USED") {
-          requestBody = promptUserForUsed(pageText);
-        }
-        const response = await fetch('https://api.openai.com/v1/chat/completions', {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            'Authorization': `Bearer ${openAiApiKey}`,
-          },
-          body: JSON.stringify(requestBody),
-        });
-        const data = await response.json();
-        if (data.choices && data.choices.length > 0) {
-          const rawContent = data.choices[0].message.content;
-          const processedContent = convertHtmlToMarkdown(rawContent);
-          newResponses.push(processedContent);
-        } else {
-          newResponses.push('No response');
-        }
+      let combinedText = '';
+
+      // Combine pages from every selected PDF file
+      for (const file of selectedFiles) {
+        const pages = await readPDF(file);
+        // Join pages with newlines; make sure invoice separators like "Vehicle Inquiry" remain intact.
+        combinedText += pages.join("\n") + "\n\n";
       }
-      setResponses(newResponses);
+
+      // Send one API request with all invoices combined.
+      const requestBody = generateCombinedPrompt(combinedText, selectedType, mileage);
+      const response = await fetch('https://api.openai.com/v1/chat/completions', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${openAiApiKey}`,
+        },
+        body: JSON.stringify(requestBody),
+      });
+      const data = await response.json();
+      if (data.choices && data.choices.length > 0) {
+        const rawContent = data.choices[0].message.content;
+        setResponses([rawContent]);
+      } else {
+        setResponses(['No response']);
+      }
+      setApiStatus('idle');
     } catch (error) {
       console.error(error);
+      setError(`Error processing file: ${error.message}`);
+      setApiStatus('error');
     } finally {
       setIsLoading(false);
     }
   };
 
-  return (
-    <>
-      <div
-        style={{ fontFamily: 'serif' }}
-        className="min-h-screen w-full px-4 py-8 flex flex-col items-center justify-center text-black bg-white"
-      >
-        <header className="flex flex-col items-center mb-6">
-          <img
-            src={headerBrand.headerLogo}
-            alt={headerBrand.headerAlt}
-            className="w-32 sm:w-36 md:w-48 mb-4"
-          />
-          <motion.h1
-            initial={{ opacity: 0, y: -10 }}
-            animate={{ opacity: 1, y: 0 }}
-            className="text-3xl sm:text-4xl md:text-5xl font-bold mb-2"
-          >
-            {headerBrand.brandName}
-          </motion.h1>
-          <motion.p
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            transition={{ delay: 0.5 }}
-            className="text-lg sm:text-xl md:text-2xl mb-6"
-          >
-            Unleash your vehicle's story.
-          </motion.p>
-        </header>
+  // --- The readPDF Function (unchanged) ---
+  const readPDF = async (file) => {
+    const fileReader = new FileReader();
+    return new Promise((resolve, reject) => {
+      fileReader.onload = async function () {
+        try {
+          const typedArray = new Uint8Array(this.result);
+          const pdf = await pdfjs.getDocument(typedArray).promise;
+          const pageTexts = [];
+          for (let i = 1; i <= pdf.numPages; i++) {
+            const page = await pdf.getPage(i);
+            const textContent = await page.getTextContent();
+            const pageText = textContent.items.map(item => item.str).join(" ");
+            pageTexts.push(`Page ${i}:\n${pageText}`);
+          }
+          resolve(pageTexts);
+        } catch (err) {
+          reject(err);
+        }
+      };
+      fileReader.readAsArrayBuffer(file);
+    });
+  };
 
-        <Card className="w-full max-w-md sm:max-w-lg shadow-xl rounded-xl border-2 border-[#e62020] bg-white dark:bg-gray-800 mb-8 mx-auto">
-          <CardContent>
-            <div className="mb-4">
-              <label className="block text-sm font-medium text-black mb-2">
-                Select Invoice Type:
-              </label>
-              <select
-                value={selectedType}
-                onChange={(e) => setSelectedType(e.target.value)}
-                className="w-full p-2 border border-gray-300 rounded-md text-black"
-              >
-                <option value="MINI">MINI Cooper Invoice</option>
-                <option value="BMW">BMW Invoice</option>
-                <option value="USED">Used Car</option>
-              </select>
-            </div>
-            <label className="block text-sm font-medium text-black mb-2">
-              Upload your documents:
+  const validateFiles = (files) => {
+    const MAX_SIZE = 5 * 1024 * 1024;
+    const validFiles = [];
+    
+    Array.from(files).forEach(file => {
+      if (file.type !== 'application/pdf') {
+        setError(`Invalid file type: ${file.name} is not a PDF`);
+      } else if (file.size > MAX_SIZE) {
+        setError(`File too large: ${file.name} exceeds 5MB`);
+      } else {
+        validFiles.push(file);
+      }
+    });
+    
+    return validFiles;
+  };
+
+  const handleFileChange = (e) => {
+    const validFiles = validateFiles(e.target.files);
+    setSelectedFiles(validFiles);
+  };
+
+  const copyToClipboard = (text) => {
+    navigator.clipboard.writeText(text);
+    // Add toast notification here
+  };
+
+  return (
+    <div className="min-h-screen flex items-center justify-center bg-gray-100 p-4 sm:p-6 lg:p-8">
+      <Card className="bg-white p-4 sm:p-6 lg:p-8 rounded-lg shadow-md w-full max-w-lg mx-2 sm:mx-4">
+        <CardContent>
+          <div className="absolute top-4 right-4 flex items-center">
+            <div className={`w-2 h-2 rounded-full mr-2 ${
+              apiStatus === 'loading' ? 'bg-yellow-400' :
+              apiStatus === 'error' ? 'bg-red-500' :
+              'bg-green-500'
+            }`} />
+            <span className="text-sm text-gray-600">{apiStatus}</span>
+          </div>
+
+          <header className="mb-6 text-center">
+            <motion.img
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              src={describerLogo}
+              alt="Describer Logo"
+              className="mx-auto w-24"
+            />
+            <motion.h1
+              initial={{ opacity: 0, y: -10 }}
+              animate={{ opacity: 1, y: 0 }}
+              className="text-2xl font-bold mt-2"
+            >
+              Describer
+            </motion.h1>
+          </header>
+
+          <div className="mb-4">
+            <label htmlFor="documentType" className="block text-sm font-medium text-gray-700 mb-2">
+              Document Type:
             </label>
-            <div className="flex items-center space-x-2">
+            <Select
+              id="documentType"
+              options={invoiceOptions}
+              value={invoiceOptions.find(opt => opt.value === selectedType)}
+              onChange={(selectedOption) => setSelectedType(selectedOption.value)}
+              className="react-select-container"
+              classNamePrefix="react-select"
+            />
+          </div>
+
+          <div className="mb-4">
+            <label htmlFor="file-upload" className="block text-sm font-medium text-gray-700 mb-2">
+              Upload your PDF documents:
+            </label>
+            <input
+              id="file-upload"
+              type="file"
+              accept="application/pdf"
+              multiple
+              onChange={handleFileChange}
+              className="block w-full text-sm text-gray-500"
+            />
+            {selectedFiles.length > 0 && (
+              <p className="text-xs text-gray-500 mt-1">{selectedFiles.length} file(s) selected.</p>
+            )}
+          </div>
+
+          {selectedType === 'USED' && (
+            <div className="mb-4">
+              <label htmlFor="mileage" className="block text-sm font-medium text-gray-700 mb-2">
+                Mileage:
+              </label>
               <input
-                type="file"
-                accept="application/pdf"
-                multiple
-                onChange={handleFileChange}
-                className="border border-gray-300 rounded-md p-2 text-black"
+                id="mileage"
+                type="text"
+                value={mileage}
+                onChange={(e) => setMileage(e.target.value)}
+                className="block w-full text-sm text-gray-500"
+                placeholder="Enter vehicle mileage"
               />
-              <Button
-                onClick={handleAnalyze}
-                disabled={!selectedFiles.length || isLoading}
-                className="bg-[#e62020] hover:bg-[#bf1c1c] text-white font-semibold py-2 px-4 rounded-md flex items-center"
-              >
-                {isLoading ? 'Analyzing...' : 'Generate Description'}
-                <Upload className="ml-2 w-5 h-5" />
+            </div>
+          )}
+
+          {selectedFiles.length > 0 && (
+            <div className="mb-4 text-center">
+              <Button onClick={handleAnalyze} disabled={isLoading}>
+                {isLoading ? "Generating..." : "Generate"}
               </Button>
             </div>
-          </CardContent>
-        </Card>
+          )}
 
-        {responses.length > 0 && (
-          <div className="w-full max-w-3xl mt-8 grid gap-6">
-            {responses.map((resp, idx) => (
-              <Card key={idx} className="p-4 shadow-xl rounded-lg bg-white dark:bg-gray-800 border border-gray-200">
-                <CardContent>
-                  <h2 className="font-bold text-xl text-black mb-2">
-                    <img
-                      src={headerBrand.inlineLogo}
-                      alt={headerBrand.inlineLogoAlt}
-                      className="w-8 sm:w-10 md:w-12 inline mr-2"
-                    />
-                    Response for Vehicle #{idx + 1}
-                  </h2>
-                  <ReactMarkdown
-                    remarkPlugins={[remarkGfm]}
-                    skipHtml={false}
-                    rehypePlugins={[rehypeRaw]}
-                    className="prose max-w-prose mx-auto"
-                  >
-                    {resp}
-                  </ReactMarkdown>
-                </CardContent>
-              </Card>
-            ))}
-          </div>
-        )}
-      </div>
-    </>
+          {isLoading && (
+            <div className="flex items-center justify-center p-4">
+              <Oval
+                height={40}
+                width={40}
+                color="#4F46E5"
+                wrapperStyle={{}}
+                wrapperClass=""
+                visible={true}
+                ariaLabel="oval-loading"
+                secondaryColor="#C7D2FE"
+                strokeWidth={2}
+                strokeWidthSecondary={2}
+              />
+              <span className="ml-2 text-gray-600">Analyzing PDF...</span>
+            </div>
+          )}
+
+          {error && (
+            <div className="mt-4 p-4 bg-red-50 border border-red-200 rounded-md">
+              <p className="text-red-600 text-sm">{error}</p>
+            </div>
+          )}
+
+          {responses.length > 0 && (
+            <div className="mt-8 space-y-4">
+              {responses.map((response, idx) => (
+                <motion.div
+                  key={idx}
+                  initial={{ opacity: 0, y: 20 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  transition={{ duration: 0.3 }}
+                  className="relative"
+                >
+                  <Card className="border rounded-lg shadow-sm overflow-hidden">
+                    <div className="bg-gray-50 p-2 border-b flex items-center">
+                      <img 
+                        src={(brands[selectedType] || headerBrand).inlineLogo} 
+                        alt="Brand Logo" 
+                        className="h-6 mr-2"
+                      />
+                      <span className="text-sm font-medium text-gray-700">
+                        {(brands[selectedType] || headerBrand).brandName.replace(/invoice/gi, '').trim()}
+                      </span>
+                      <button
+                        onClick={() => copyToClipboard(response)}
+                        className="ml-auto p-1 text-gray-500 hover:text-indigo-600"
+                      >
+                        <ClipboardCopy className="h-4 w-4" />
+                      </button>
+                    </div>
+                    <CardContent className="p-4 bg-white">
+                      <ReactMarkdown 
+                        remarkPlugins={[remarkGfm]} 
+                        rehypePlugins={[rehypeRaw]}
+                        className="prose prose-sm max-w-none"
+                        components={{
+                          h2: ({ ...props }) => <h2 className="text-xl font-semibold mt-4 mb-2" {...props} />,
+                          ul: ({ ...props }) => <ul className="list-disc pl-6 mb-4" {...props} />,
+                          strong: ({ ...props }) => <strong className="font-semibold text-gray-800" {...props} />
+                        }}
+                      >
+                        {response}
+                      </ReactMarkdown>
+                    </CardContent>
+                  </Card>
+                </motion.div>
+              ))}
+            </div>
+          )}
+        </CardContent>
+      </Card>
+    </div>
   );
 }
 
 export default PdfUploadChatGPTApp;
-
-// Below is a small test suite to confirm that readPDF handles basic flows.
-// We'll be using Jest as an example.
-// This is purely illustrative — you can place this test in a separate file.
-
-/*
-import { readPDF } from './PdfUploadChatGPTApp';
-
-describe('readPDF', () => {
-  test('should reject when given an invalid file', async () => {
-    const file = new File(['not a pdf'], 'test.txt', { type: 'text/plain' });
-    await expect(readPDF(file)).rejects.toThrow();
-  });
-
-  test('should parse a valid PDF (requires a mock or a real PDF)', async () => {
-    // For a real test, you'd provide a mock PDF file or mock the pdfjs-dist calls.
-    // This is just a placeholder.
-    expect(true).toBe(true);
-  });
-
-  // Additional test to ensure worker loading doesn't crash.
-  test('should handle missing worker gracefully', async () => {
-    // We would test scenarios where pdfjs.GlobalWorkerOptions.workerSrc is invalid.
-    expect(true).toBe(true);
-  });
-
-  // Additional test for version mismatch.
-  test('should throw or warn if main library version does not match worker version', async () => {
-    // This is just a placeholder. We'd normally test that pdfjs reports version mismatch.
-    expect(true).toBe(true);
-  });
-
-  // Additional test if the CDN is unreachable or blocked.
-  test('should fail or fallback if the CDN is unreachable', async () => {
-    // In a real scenario, you might mock fetch or your environment to simulate a blocked CDN.
-    expect(true).toBe(true);
-  });
-});
-*/

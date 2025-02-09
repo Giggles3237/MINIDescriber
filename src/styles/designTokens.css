@@ -1,0 +1,27 @@
+/* Global Design Tokens */
+:root {
+  /* Primary Colors */
+  --bmw-blue: #0066B1;
+  --mini-green: #70B62C;
+
+  /* Neutral Colors */
+  --white: #ffffff;
+  --light-gray: #f2f2f2;
+  --dark-gray: #333333;
+  --border-color: #cccccc;
+  
+  /* Background and Text */
+  --background-color: #ffffff;
+  --text-color: #333333;
+
+  /* Additional tokens (e.g., Padding, BorderRadius, Shadows) */
+  --border-radius: 8px;
+  --box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+}
+
+.night-mode {
+  --background-color: #121212;
+  --text-color: #e0e0e0;
+  --light-gray: #2a2a2a;
+  --border-color: #555555;
+}
