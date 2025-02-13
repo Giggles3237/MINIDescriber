@@ -1,11 +1,25 @@
 import React from 'react';
-import ReactDOM from 'react-dom/client';
-import App from './App';
-import './styles/designTokens.css'; // Global design tokens
-import './index.css'; // Other global styles if any
+import ReactDOM from 'react-dom';
+import PdfUploadChatGPTApp from './PdfUploadChatGPTApp';
+import { CssBaseline, ThemeProvider, createTheme } from '@mui/material';
 
-ReactDOM.createRoot(document.getElementById('root')).render(
+const theme = createTheme({
+  palette: {
+    primary: {
+      main: "#1976d2",
+    },
+    secondary: {
+      main: "#dc004e",
+    },
+  },
+});
+
+ReactDOM.render(
   <React.StrictMode>
-    <App />
-  </React.StrictMode>
+    <ThemeProvider theme={theme}>
+      <CssBaseline />
+      <PdfUploadChatGPTApp />
+    </ThemeProvider>
+  </React.StrictMode>,
+  document.getElementById('root')
 );

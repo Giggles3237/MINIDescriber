@@ -1,10 +1,14 @@
 // PdfUploadChatGPTApp.jsx
-import { useState } from 'react';
+import React, { useState } from 'react';
 import { motion } from 'framer-motion';
-import { Card, CardContent } from "@/components/ui/card";
-import { Button } from "@/components/ui/button";
+// MUI Components
+import Card from '@mui/material/Card';
+import CardContent from '@mui/material/CardContent';
+import Button from '@mui/material/Button';
+import Typography from '@mui/material/Typography';
+import { CircularProgress } from '@mui/material';
+import TextField from '@mui/material/TextField';
 import { ClipboardCopy } from 'lucide-react';
-import { Oval } from "react-loader-spinner";
 import ReactMarkdown from 'react-markdown';
 import rehypeRaw from 'rehype-raw';
 import remarkGfm from 'remark-gfm';
@@ -69,10 +73,11 @@ const invoiceOptions = [
   { value: 'DEEPSEEK', label: 'DeepSeek (Beta)' },
 ];
 
-// Prompt function for MINI documents
+// (Existing prompt functions … remain unchanged)
+
 const promptUserForMini = (documentData) => {
   return {
-    model: "gpt-3.5-turbo",
+    model: "gpt-4o-mini",
     messages: [
       {
         role: "system",
@@ -81,7 +86,7 @@ You are an expert automotive copywriter specializing in MINI Cooper vehicles. Yo
 Avoid overly technical jargon. NO model codes. Ensure that Year Make and model only once in the description.
 Augment the documents with your own knowledge of the vehicle to make the description more engaging and informative.
 Write two compelling paragraphs that capture the character and value of the used vehicle, emphasizing its features, in a tone that is both informative and inviting.
-Seamlessly integrate key details into the narrative rather than listing them mechanically.
+Seamlessly integrate key details into the narrative rather than listing them mechanically. Write in a cheeky and fun MINI Style
 - Follow the description with a clear, skimmable bullet-point list of essential options only expanding package content where applicable.
 - Use the model name (not the code), and format in Markdown.
         `,
@@ -96,10 +101,9 @@ Seamlessly integrate key details into the narrative rather than listing them mec
   };
 };
 
-// Prompt function for BMW documents
 const promptUserForBMW = (documentData) => {
   return {
-    model: "gpt-3.5-turbo",
+    model: "gpt-4o-mini",
     messages: [
       {
         role: "system",
@@ -123,18 +127,18 @@ Seamlessly integrate key details into the narrative rather than listing them mec
   };
 };
 
-// Prompt function for Used Car documents
 const promptUserForUsed = (documentData, mileage = '') => {
   const mileageInfo = mileage ? `\nMileage: ${mileage}` : '';
   return {
-    model: "gpt-3.5-turbo",
+    model: "gpt-4o-mini",
     messages: [
       {
         role: "system",
         content: `
-You are an automotive copywriter specializing in used cars. Examine this document thoroughly, building a comprehensive description of the vehicle. Your task is to create persuasive, conversion-focused descriptions that effectively showcase the vehicle's standout options, proven reliability, and exceptional value to convert buyers.
+You are an automotive copywriter specializing in used cars. Examine this document thoroughly, building a comprehensive description of the vehicle. 
+Your task is to create persuasive, conversion-focused descriptions that effectively showcase the vehicle's standout options, proven reliability, and exceptional value to convert buyers.
 Avoid overly technical jargon. NO model codes. Ensure that Year Make and model only once in the description.
-Augment the documents with your own knowledge of the vehicle to make the description more engaging and informative.
+Augment the documents with your own knowledge of the vehicle to make the description more accurate, engaging and informative.
 - Write two compelling paragraphs that capture the character and value of the used vehicle, emphasizing its unique features, current performance, and overall quality in a tone that is both informative and inviting.
 - Seamlessly integrate key details into the narrative rather than listing them mechanically.
 - Follow the description with a clear, skimmable bullet-point list of essential options only.
@@ -151,10 +155,9 @@ Augment the documents with your own knowledge of the vehicle to make the descrip
   };
 };
 
-// Prompt function for DeepSeek (Beta) documents
 const promptUserForDeepSeek = (documentData) => {
   return {
-    model: "gpt-3.5-turbo",
+    model: "gpt-4o-mini",
     messages: [
       {
         role: "system",
@@ -174,11 +177,10 @@ Use the model name (not the code), and format the description in Markdown.`,
   };
 };
 
-// New combined prompt generator for multi-invoice PDFs
 const generateCombinedPrompt = (documentData, selectedType, mileage) => {
   if (selectedType === 'MINI') {
     return {
-      model: "gpt-3.5-turbo",
+      model: "gpt-4o-mini",
       messages: [
         {
           role: "system",
@@ -200,32 +202,25 @@ For each invoice, generate an engaging, high-converting description for a car li
       temperature: 0.7,
     };
   }
-  // You can create similar prompt functions for BMW, USED, or DEEPSEEK if needed.
-  // For now, if none match we'll fallback to the MINI style.
+  // Fallback to MINI style if none match.
   return generateCombinedPrompt(documentData, 'MINI', mileage);
 };
 
-// Helper to check if a page starts with "Vehicle Inquiry"
+// Helper functions (isVehicleInquiryHeader, getRealText, groupInvoices, groupInvoicesPages) remain unchanged.
 const isVehicleInquiryHeader = (text) => /^Vehicle Inquiry/i.test(text);
 
-// Remove the "Page X:" prefix (common to all pages) to get the actual content.
 const getRealText = (pageText) => {
   return pageText.replace(/^Page \d+:\s*/, '');
 };
 
-// Updated grouping function that uses "Vehicle Inquiry" as a separator
 const groupInvoices = (pageTexts) => {
   const invoiceGroups = [];
   let currentGroup = [];
-
-  // Set a threshold to consider a page blank (e.g., less than 20 non-space characters)
   const blankThreshold = 20;
   const isBlankPage = (text) => text.trim().length < blankThreshold;
 
   pageTexts.forEach((pageText) => {
     const cleanText = getRealText(pageText);
-
-    // If the page is nearly blank, treat it as a separator.
     if (isBlankPage(cleanText)) {
       if (currentGroup.length > 0) {
         invoiceGroups.push(currentGroup.join("\n"));
@@ -233,25 +228,17 @@ const groupInvoices = (pageTexts) => {
       }
       return;
     }
-
-    // If the page starts with "Vehicle Inquiry", start a new invoice group.
     if (isVehicleInquiryHeader(cleanText)) {
       if (currentGroup.length > 0) {
         invoiceGroups.push(currentGroup.join("\n"));
         currentGroup = [];
       }
-      currentGroup.push(pageText);
-    } else {
-      // Otherwise, continue adding pages to the current group.
-      currentGroup.push(pageText);
     }
+    currentGroup.push(pageText);
   });
-
-  // Add any remaining pages as an invoice group.
   if (currentGroup.length > 0) {
     invoiceGroups.push(currentGroup.join("\n"));
   }
-
   return invoiceGroups;
 };
 
@@ -263,21 +250,20 @@ function PdfUploadChatGPTApp() {
   const [error, setError] = useState(null);
   const [apiStatus, setApiStatus] = useState('idle');
   const [mileage, setMileage] = useState('');
+  const [isDragging, setIsDragging] = useState(false);
+  const [isFocused, setIsFocused] = useState(false);
+  // New state for iterative refinement:
+  const [refinementInputs, setRefinementInputs] = useState({}); // { index: string }
+  const [refinementOpen, setRefinementOpen] = useState({}); // { index: boolean }
 
-  // --- Helper Functions ---
+  // --- Existing helper functions (groupInvoicesPages, handleAnalyze, readPDF, validateFiles, handleFileChange, copyToClipboard, drag/drop handlers, keyboard handlers) remain unchanged ---
 
-  // Group pages into separate invoices based on a header pattern.
-  // This regex assumes that an invoice starts when a page's content (after cleaning)
-  // starts with "Invoice Number" or "Invoice #". Adjust the pattern as needed.
-  const groupInvoices = (pageTexts) => {
+  const groupInvoicesPages = (pageTexts) => {
     const invoiceGroups = [];
     let currentGroup = [];
     const invoiceHeaderRegex = /^(Invoice\s*(Number|#))/i;
-
     pageTexts.forEach((pageText) => {
       const cleanText = getRealText(pageText);
-      // If a new invoice header is detected and we've already gathered pages for an invoice,
-      // then push the current group as one invoice and start a new group.
       if (invoiceHeaderRegex.test(cleanText) && currentGroup.length > 0) {
         invoiceGroups.push(currentGroup.join("\n"));
         currentGroup = [pageText];
@@ -285,58 +271,54 @@ function PdfUploadChatGPTApp() {
         currentGroup.push(pageText);
       }
     });
-
     if (currentGroup.length > 0) {
       invoiceGroups.push(currentGroup.join("\n"));
     }
-
     return invoiceGroups;
   };
 
-  // --- Modified Handle Analyze Function ---
-  // Group pages by invoice and process each group.
   const handleAnalyze = async () => {
+    setError(null); // Clear any previous errors when generating a new response.
     try {
       setIsLoading(true);
       setApiStatus('loading');
       setResponses([]);
-      let combinedText = '';
-
-      // Combine pages from every selected PDF file
+      const allResponses = [];
       for (const file of selectedFiles) {
         const pages = await readPDF(file);
-        // Join pages with newlines; make sure invoice separators like "Vehicle Inquiry" remain intact.
-        combinedText += pages.join("\n") + "\n\n";
+        const invoiceGroups = groupInvoices(pages);
+        console.log("Invoice Groups:", invoiceGroups);
+        for (const groupText of invoiceGroups) {
+          const requestBody = generateCombinedPrompt(groupText, selectedType, mileage);
+          console.log("Request Body for group:", requestBody);
+          const response = await fetch("https://api.openai.com/v1/chat/completions", {
+            method: "POST",
+            headers: {
+              "Content-Type": "application/json",
+              Authorization: `Bearer ${openAiApiKey}`,
+            },
+            body: JSON.stringify(requestBody),
+          });
+          const data = await response.json();
+          console.log("Response data for group:", data);
+          if (data.choices && data.choices.length > 0) {
+            allResponses.push(data.choices[0].message.content);
+          } else {
+            allResponses.push("No Response");
+          }
+        }
       }
-
-      // Send one API request with all invoices combined.
-      const requestBody = generateCombinedPrompt(combinedText, selectedType, mileage);
-      const response = await fetch('https://api.openai.com/v1/chat/completions', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${openAiApiKey}`,
-        },
-        body: JSON.stringify(requestBody),
-      });
-      const data = await response.json();
-      if (data.choices && data.choices.length > 0) {
-        const rawContent = data.choices[0].message.content;
-        setResponses([rawContent]);
-      } else {
-        setResponses(['No response']);
-      }
-      setApiStatus('idle');
+      setResponses(allResponses);
+      setApiStatus("idle");
     } catch (error) {
       console.error(error);
-      setError(`Error processing file: ${error.message}`);
-      setApiStatus('error');
+      setError(`Error processing files: ${error.message}`);
+      setApiStatus("error");
     } finally {
       setIsLoading(false);
     }
   };
 
-  // --- The readPDF Function (unchanged) ---
   const readPDF = async (file) => {
     const fileReader = new FileReader();
     return new Promise((resolve, reject) => {
@@ -363,7 +345,6 @@ function PdfUploadChatGPTApp() {
   const validateFiles = (files) => {
     const MAX_SIZE = 5 * 1024 * 1024;
     const validFiles = [];
-    
     Array.from(files).forEach(file => {
       if (file.type !== 'application/pdf') {
         setError(`Invalid file type: ${file.name} is not a PDF`);
@@ -373,7 +354,6 @@ function PdfUploadChatGPTApp() {
         validFiles.push(file);
       }
     });
-    
     return validFiles;
   };
 
@@ -384,41 +364,126 @@ function PdfUploadChatGPTApp() {
 
   const copyToClipboard = (text) => {
     navigator.clipboard.writeText(text);
-    // Add toast notification here
+    // Add toast notification here if desired
+  };
+
+  const handleDrag = (e) => {
+    e.preventDefault();
+    e.stopPropagation();
+    if (e.type === 'dragenter' || e.type === 'dragover') {
+      setIsDragging(true);
+    } else if (e.type === 'dragleave') {
+      setIsDragging(false);
+    }
+  };
+
+  const handleDrop = (e) => {
+    e.preventDefault();
+    e.stopPropagation();
+    setIsDragging(false);
+    const files = [...e.dataTransfer.files];
+    const validFiles = validateFiles(files);
+    setSelectedFiles(validFiles);
+  };
+
+  const handleKeyDown = (e) => {
+    if (e.key === 'Enter' || e.key === 'Space') {
+      e.preventDefault();
+      document.getElementById('file-upload').click();
+    }
+  };
+
+  // --- New function: handleRefine ---
+  // This function takes the response at the given index and the refinement instructions provided by the user,
+  // then sends a new API call to generate a refined version.
+  const handleRefine = async (index) => {
+    const currentResponse = responses[index];
+    const improvementInstructions = refinementInputs[index];
+    if (!improvementInstructions) return;
+    const requestBody = {
+      model: "gpt-4o-mini",
+      messages: [
+        { role: "system", content: systemMessage },
+        { role: "assistant", content: currentResponse },
+        { role: "user", content: improvementInstructions }
+      ],
+      max_tokens: 1000,
+      temperature: 0.7,
+    };
+    try {
+      setIsLoading(true);
+      setApiStatus('loading');
+      const response = await fetch("https://api.openai.com/v1/chat/completions", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${openAiApiKey}`,
+        },
+        body: JSON.stringify(requestBody),
+      });
+      const data = await response.json();
+      if (data.choices && data.choices.length > 0) {
+        const newResponse = data.choices[0].message.content;
+        setResponses(prev => {
+          const updated = [...prev];
+          updated[index] = newResponse;
+          return updated;
+        });
+        // Optionally close the refinement UI for this response.
+        setRefinementOpen(prev => ({ ...prev, [index]: false }));
+      }
+      setApiStatus("idle");
+    } catch (error) {
+      console.error(error);
+      setError(`Error refining response: ${error.message}`);
+      setApiStatus("error");
+    } finally {
+      setIsLoading(false);
+    }
   };
 
   return (
-    <div className="min-h-screen flex items-center justify-center bg-gray-100 p-4 sm:p-6 lg:p-8">
-      <Card className="bg-white p-4 sm:p-6 lg:p-8 rounded-lg shadow-md w-full max-w-lg mx-2 sm:mx-4">
+    <div style={{ minHeight: '100vh' }} className="flex items-center justify-center bg-gray-100 p-4 sm:p-6 lg:p-8">
+      <Card sx={{ padding: 2, maxWidth: 500, width: '100%' }}>
         <CardContent>
-          <div className="absolute top-4 right-4 flex items-center">
-            <div className={`w-2 h-2 rounded-full mr-2 ${
-              apiStatus === 'loading' ? 'bg-yellow-400' :
-              apiStatus === 'error' ? 'bg-red-500' :
-              'bg-green-500'
-            }`} />
-            <span className="text-sm text-gray-600">{apiStatus}</span>
+          {/* Status indicator */}
+          <div style={{ position: 'absolute', top: 16, right: 16, display: 'flex', alignItems: 'center' }}>
+            <div
+              style={{
+                width: 8,
+                height: 8,
+                borderRadius: '50%',
+                marginRight: 8,
+                backgroundColor: apiStatus === 'loading' ? '#fbc02d'
+                  : apiStatus === 'error' ? '#e53935' : '#43a047',
+              }}
+            />
+            <Typography variant="caption">{apiStatus}</Typography>
           </div>
 
-          <header className="mb-6 text-center">
+          <header style={{ textAlign: 'center', marginBottom: '1.5rem' }}>
             <motion.img
               initial={{ opacity: 0 }}
               animate={{ opacity: 1 }}
               src={describerLogo}
               alt="Describer Logo"
-              className="mx-auto w-24"
+              style={{ width: 96, margin: '0 auto' }}
             />
             <motion.h1
               initial={{ opacity: 0, y: -10 }}
               animate={{ opacity: 1, y: 0 }}
-              className="text-2xl font-bold mt-2"
+              style={{ fontSize: '1.5rem', fontWeight: 'bold', marginTop: 8 }}
             >
               Describer
             </motion.h1>
           </header>
 
           <div className="mb-4">
-            <label htmlFor="documentType" className="block text-sm font-medium text-gray-700 mb-2">
+            <label 
+              htmlFor="documentType" 
+              className="block text-sm font-medium text-gray-700 mb-2"
+              id="document-type-label"
+            >
               Document Type:
             </label>
             <Select
@@ -428,102 +493,93 @@ function PdfUploadChatGPTApp() {
               onChange={(selectedOption) => setSelectedType(selectedOption.value)}
               className="react-select-container"
               classNamePrefix="react-select"
+              aria-labelledby="document-type-label"
             />
           </div>
 
-          <div className="mb-4">
-            <label htmlFor="file-upload" className="block text-sm font-medium text-gray-700 mb-2">
+          <div 
+            style={{
+              border: isDragging ? '2px solid #3f51b5' : '2px dashed #ccc',
+              borderRadius: 8,
+              padding: '1.5rem',
+              transition: 'all 0.3s',
+              position: 'relative',
+            }}
+            onDragEnter={handleDrag}
+            onDragLeave={handleDrag}
+            onDragOver={handleDrag}
+            onDrop={handleDrop}
+            onKeyDown={handleKeyDown}
+            tabIndex="0"
+            role="button"
+            aria-label="Upload PDF documents"
+          >
+            <Typography variant="subtitle1" gutterBottom>
               Upload your PDF documents:
-            </label>
+            </Typography>
             <input
               id="file-upload"
               type="file"
               accept="application/pdf"
               multiple
               onChange={handleFileChange}
-              className="block w-full text-sm text-gray-500"
+              style={{ width: '100%' }}
+              aria-label="Choose PDF files"
+              onFocus={() => setIsFocused(true)}
+              onBlur={() => setIsFocused(false)}
             />
+            <div style={{ marginTop: 8, textAlign: 'center' }}>
+              <Typography variant="body2" color="textSecondary">
+                Drag and drop your files here, or click to select files
+              </Typography>
+            </div>
             {selectedFiles.length > 0 && (
-              <p className="text-xs text-gray-500 mt-1">{selectedFiles.length} file(s) selected.</p>
+              <Typography variant="caption" color="textSecondary" style={{ marginTop: 4, display: 'block' }}>
+                {selectedFiles.length} file(s) selected
+              </Typography>
             )}
           </div>
 
           {selectedType === 'USED' && (
-            <div className="mb-4">
-              <label htmlFor="mileage" className="block text-sm font-medium text-gray-700 mb-2">
-                Mileage:
-              </label>
+            <div style={{ marginTop: 16 }}>
+              <Typography variant="subtitle1" gutterBottom>Mileage:</Typography>
               <input
                 id="mileage"
                 type="text"
                 value={mileage}
                 onChange={(e) => setMileage(e.target.value)}
-                className="block w-full text-sm text-gray-500"
+                style={{ width: '100%', padding: '8px', fontSize: '0.875rem' }}
                 placeholder="Enter vehicle mileage"
               />
             </div>
           )}
 
           {selectedFiles.length > 0 && (
-            <div className="mb-4 text-center">
-              <Button onClick={handleAnalyze} disabled={isLoading}>
-                {isLoading ? "Generating..." : "Generate"}
+            <div style={{ marginTop: 16, textAlign: 'center' }}>
+              <Button variant="contained" onClick={handleAnalyze} disabled={isLoading}>
+                {isLoading ? <CircularProgress size={24} /> : 'Generate'}
               </Button>
             </div>
           )}
 
-          {isLoading && (
-            <div className="flex items-center justify-center p-4">
-              <Oval
-                height={40}
-                width={40}
-                color="#4F46E5"
-                wrapperStyle={{}}
-                wrapperClass=""
-                visible={true}
-                ariaLabel="oval-loading"
-                secondaryColor="#C7D2FE"
-                strokeWidth={2}
-                strokeWidthSecondary={2}
-              />
-              <span className="ml-2 text-gray-600">Analyzing PDF...</span>
-            </div>
-          )}
-
           {error && (
-            <div className="mt-4 p-4 bg-red-50 border border-red-200 rounded-md">
-              <p className="text-red-600 text-sm">{error}</p>
+            <div style={{ marginTop: 16, padding: 16, backgroundColor: '#ffebee', border: '1px solid #ef9a9a', borderRadius: 4 }}>
+              <Typography variant="body2" color="error">{error}</Typography>
             </div>
           )}
 
           {responses.length > 0 && (
-            <div className="mt-8 space-y-4">
+            <div style={{ marginTop: 32 }}>
               {responses.map((response, idx) => (
                 <motion.div
                   key={idx}
                   initial={{ opacity: 0, y: 20 }}
                   animate={{ opacity: 1, y: 0 }}
                   transition={{ duration: 0.3 }}
-                  className="relative"
+                  style={{ marginBottom: 16 }}
                 >
-                  <Card className="border rounded-lg shadow-sm overflow-hidden">
-                    <div className="bg-gray-50 p-2 border-b flex items-center">
-                      <img 
-                        src={(brands[selectedType] || headerBrand).inlineLogo} 
-                        alt="Brand Logo" 
-                        className="h-6 mr-2"
-                      />
-                      <span className="text-sm font-medium text-gray-700">
-                        {(brands[selectedType] || headerBrand).brandName.replace(/invoice/gi, '').trim()}
-                      </span>
-                      <button
-                        onClick={() => copyToClipboard(response)}
-                        className="ml-auto p-1 text-gray-500 hover:text-indigo-600"
-                      >
-                        <ClipboardCopy className="h-4 w-4" />
-                      </button>
-                    </div>
-                    <CardContent className="p-4 bg-white">
+                  <Card variant="outlined">
+                    <CardContent>
                       <ReactMarkdown 
                         remarkPlugins={[remarkGfm]} 
                         rehypePlugins={[rehypeRaw]}
@@ -536,6 +592,41 @@ function PdfUploadChatGPTApp() {
                       >
                         {response}
                       </ReactMarkdown>
+                      {/* Iterative refinement UI */}
+                      {refinementOpen[idx] ? (
+                        <div style={{ marginTop: 8 }}>
+                          <TextField
+                            label="Refinement instructions"
+                            multiline
+                            fullWidth
+                            variant="outlined"
+                            value={refinementInputs[idx] || ""}
+                            onChange={(e) => setRefinementInputs(prev => ({ ...prev, [idx]: e.target.value }))}
+                          />
+                          <Button
+                            variant="contained"
+                            color="primary"
+                            onClick={() => handleRefine(idx)}
+                            style={{ marginTop: 8 }}
+                          >
+                            Submit Improvement
+                          </Button>
+                        </div>
+                      ) : (
+                        <Button
+                          variant="text"
+                          onClick={() => setRefinementOpen(prev => ({ ...prev, [idx]: true }))}
+                          style={{ marginTop: 8 }}
+                        >
+                          Improve
+                        </Button>
+                      )}
+                      {/* Copy to clipboard button */}
+                      <div style={{ marginTop: 8, textAlign: 'right' }}>
+                        <Button onClick={() => copyToClipboard(response)}>
+                          <ClipboardCopy className="h-4 w-4" />
+                        </Button>
+                      </div>
                     </CardContent>
                   </Card>
                 </motion.div>
