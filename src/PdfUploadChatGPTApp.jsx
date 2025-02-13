@@ -1,12 +1,12 @@
 // PdfUploadChatGPTApp.jsx
-import React, { useState } from 'react';
+import React, { useState, useCallback } from 'react';
 import { motion } from 'framer-motion';
 // MUI Components
 import Card from '@mui/material/Card';
 import CardContent from '@mui/material/CardContent';
 import Button from '@mui/material/Button';
 import Typography from '@mui/material/Typography';
-import { CircularProgress } from '@mui/material';
+import { CircularProgress, Snackbar, Alert, Accordion, AccordionSummary, AccordionDetails } from '@mui/material';
 import TextField from '@mui/material/TextField';
 import { ClipboardCopy } from 'lucide-react';
 import ReactMarkdown from 'react-markdown';
@@ -14,6 +14,9 @@ import rehypeRaw from 'rehype-raw';
 import remarkGfm from 'remark-gfm';
 import * as pdfjs from 'pdfjs-dist/legacy/build/pdf';
 import Select from 'react-select';
+// MUI Icons for accordion expansion
+import ExpandMoreIcon from '@mui/icons-material/ExpandMore';
+
 import describerLogo from './icons/Logo 2.png';
 import miniLogo from './icons/MOP.png';
 import bmwLogo from './icons/BOP.png';
@@ -73,8 +76,7 @@ const invoiceOptions = [
   { value: 'DEEPSEEK', label: 'DeepSeek (Beta)' },
 ];
 
-// (Existing prompt functions … remain unchanged)
-
+// Prompt functions (unchanged)
 const promptUserForMini = (documentData) => {
   return {
     model: "gpt-4o-mini",
@@ -206,19 +208,14 @@ For each invoice, generate an engaging, high-converting description for a car li
   return generateCombinedPrompt(documentData, 'MINI', mileage);
 };
 
-// Helper functions (isVehicleInquiryHeader, getRealText, groupInvoices, groupInvoicesPages) remain unchanged.
+// Helper functions (unchanged)
 const isVehicleInquiryHeader = (text) => /^Vehicle Inquiry/i.test(text);
-
-const getRealText = (pageText) => {
-  return pageText.replace(/^Page \d+:\s*/, '');
-};
-
+const getRealText = (pageText) => pageText.replace(/^Page \d+:\s*/, '');
 const groupInvoices = (pageTexts) => {
   const invoiceGroups = [];
   let currentGroup = [];
   const blankThreshold = 20;
   const isBlankPage = (text) => text.trim().length < blankThreshold;
-
   pageTexts.forEach((pageText) => {
     const cleanText = getRealText(pageText);
     if (isBlankPage(cleanText)) {
@@ -252,33 +249,19 @@ function PdfUploadChatGPTApp() {
   const [mileage, setMileage] = useState('');
   const [isDragging, setIsDragging] = useState(false);
   const [isFocused, setIsFocused] = useState(false);
-  // New state for iterative refinement:
+  // State for iterative refinement:
   const [refinementInputs, setRefinementInputs] = useState({}); // { index: string }
   const [refinementOpen, setRefinementOpen] = useState({}); // { index: boolean }
+  // Revision history per response (each index holds an array of previous versions)
+  const [revisionHistory, setRevisionHistory] = useState({});
 
-  // --- Existing helper functions (groupInvoicesPages, handleAnalyze, readPDF, validateFiles, handleFileChange, copyToClipboard, drag/drop handlers, keyboard handlers) remain unchanged ---
+  // Snackbar notification state
+  const [notification, setNotification] = useState({ open: false, message: '', severity: 'success' });
 
-  const groupInvoicesPages = (pageTexts) => {
-    const invoiceGroups = [];
-    let currentGroup = [];
-    const invoiceHeaderRegex = /^(Invoice\s*(Number|#))/i;
-    pageTexts.forEach((pageText) => {
-      const cleanText = getRealText(pageText);
-      if (invoiceHeaderRegex.test(cleanText) && currentGroup.length > 0) {
-        invoiceGroups.push(currentGroup.join("\n"));
-        currentGroup = [pageText];
-      } else {
-        currentGroup.push(pageText);
-      }
-    });
-    if (currentGroup.length > 0) {
-      invoiceGroups.push(currentGroup.join("\n"));
-    }
-    return invoiceGroups;
-  };
+  // --- Event Handlers wrapped with useCallback ---
 
-  const handleAnalyze = async () => {
-    setError(null); // Clear any previous errors when generating a new response.
+  const handleAnalyze = useCallback(async () => {
+    setError(null); // Clear previous errors
     try {
       setIsLoading(true);
       setApiStatus('loading');
@@ -310,93 +293,18 @@ function PdfUploadChatGPTApp() {
       }
       setResponses(allResponses);
       setApiStatus("idle");
+      setNotification({ open: true, message: "Response generated successfully!", severity: "success" });
     } catch (error) {
       console.error(error);
       setError(`Error processing files: ${error.message}`);
       setApiStatus("error");
+      setNotification({ open: true, message: `Error: ${error.message}`, severity: "error" });
     } finally {
       setIsLoading(false);
     }
-  };
+  }, [selectedFiles, selectedType, mileage]);
 
-  const readPDF = async (file) => {
-    const fileReader = new FileReader();
-    return new Promise((resolve, reject) => {
-      fileReader.onload = async function () {
-        try {
-          const typedArray = new Uint8Array(this.result);
-          const pdf = await pdfjs.getDocument(typedArray).promise;
-          const pageTexts = [];
-          for (let i = 1; i <= pdf.numPages; i++) {
-            const page = await pdf.getPage(i);
-            const textContent = await page.getTextContent();
-            const pageText = textContent.items.map(item => item.str).join(" ");
-            pageTexts.push(`Page ${i}:\n${pageText}`);
-          }
-          resolve(pageTexts);
-        } catch (err) {
-          reject(err);
-        }
-      };
-      fileReader.readAsArrayBuffer(file);
-    });
-  };
-
-  const validateFiles = (files) => {
-    const MAX_SIZE = 5 * 1024 * 1024;
-    const validFiles = [];
-    Array.from(files).forEach(file => {
-      if (file.type !== 'application/pdf') {
-        setError(`Invalid file type: ${file.name} is not a PDF`);
-      } else if (file.size > MAX_SIZE) {
-        setError(`File too large: ${file.name} exceeds 5MB`);
-      } else {
-        validFiles.push(file);
-      }
-    });
-    return validFiles;
-  };
-
-  const handleFileChange = (e) => {
-    const validFiles = validateFiles(e.target.files);
-    setSelectedFiles(validFiles);
-  };
-
-  const copyToClipboard = (text) => {
-    navigator.clipboard.writeText(text);
-    // Add toast notification here if desired
-  };
-
-  const handleDrag = (e) => {
-    e.preventDefault();
-    e.stopPropagation();
-    if (e.type === 'dragenter' || e.type === 'dragover') {
-      setIsDragging(true);
-    } else if (e.type === 'dragleave') {
-      setIsDragging(false);
-    }
-  };
-
-  const handleDrop = (e) => {
-    e.preventDefault();
-    e.stopPropagation();
-    setIsDragging(false);
-    const files = [...e.dataTransfer.files];
-    const validFiles = validateFiles(files);
-    setSelectedFiles(validFiles);
-  };
-
-  const handleKeyDown = (e) => {
-    if (e.key === 'Enter' || e.key === 'Space') {
-      e.preventDefault();
-      document.getElementById('file-upload').click();
-    }
-  };
-
-  // --- New function: handleRefine ---
-  // This function takes the response at the given index and the refinement instructions provided by the user,
-  // then sends a new API call to generate a refined version.
-  const handleRefine = async (index) => {
+  const handleRefine = useCallback(async (index) => {
     const currentResponse = responses[index];
     const improvementInstructions = refinementInputs[index];
     if (!improvementInstructions) return;
@@ -424,6 +332,12 @@ function PdfUploadChatGPTApp() {
       const data = await response.json();
       if (data.choices && data.choices.length > 0) {
         const newResponse = data.choices[0].message.content;
+        // Update revision history for this response
+        setRevisionHistory(prev => {
+          const history = prev[index] ? [...prev[index]] : [];
+          history.push(currentResponse);
+          return { ...prev, [index]: history };
+        });
         setResponses(prev => {
           const updated = [...prev];
           updated[index] = newResponse;
@@ -431,23 +345,133 @@ function PdfUploadChatGPTApp() {
         });
         // Optionally close the refinement UI for this response.
         setRefinementOpen(prev => ({ ...prev, [index]: false }));
+        setNotification({ open: true, message: "Response refined successfully!", severity: "success" });
       }
       setApiStatus("idle");
     } catch (error) {
       console.error(error);
       setError(`Error refining response: ${error.message}`);
       setApiStatus("error");
+      setNotification({ open: true, message: `Error refining response: ${error.message}`, severity: "error" });
     } finally {
       setIsLoading(false);
     }
-  };
+  }, [responses, refinementInputs]);
+
+  const handleFileChange = useCallback((e) => {
+    const validFiles = validateFiles(e.target.files);
+    setSelectedFiles(validFiles);
+    if (validFiles.length > 0) {
+      setNotification({ open: true, message: `${validFiles.length} file(s) selected.`, severity: "info" });
+    }
+  }, []);
+
+  const copyToClipboard = useCallback((text) => {
+    navigator.clipboard.writeText(text);
+    setNotification({ open: true, message: "Copied to clipboard!", severity: "success" });
+  }, []);
+
+  const handleDrag = useCallback((e) => {
+    e.preventDefault();
+    e.stopPropagation();
+    if (e.type === 'dragenter' || e.type === 'dragover') {
+      setIsDragging(true);
+    } else if (e.type === 'dragleave') {
+      setIsDragging(false);
+    }
+  }, []);
+
+  const handleDrop = useCallback((e) => {
+    e.preventDefault();
+    e.stopPropagation();
+    setIsDragging(false);
+    const files = [...e.dataTransfer.files];
+    const validFiles = validateFiles(files);
+    setSelectedFiles(validFiles);
+    if (validFiles.length > 0) {
+      setNotification({ open: true, message: `${validFiles.length} file(s) dropped.`, severity: "info" });
+    }
+  }, []);
+
+  const handleKeyDown = useCallback((e) => {
+    if (e.key === 'Enter' || e.key === 'Space') {
+      e.preventDefault();
+      document.getElementById('file-upload').click();
+    }
+  }, []);
+
+  const handleCloseNotification = useCallback(() => {
+    setNotification(prev => ({ ...prev, open: false }));
+  }, []);
+
+  // --- Other functions remain unchanged ---
+  const groupInvoicesPages = useCallback((pageTexts) => {
+    const invoiceGroups = [];
+    let currentGroup = [];
+    const invoiceHeaderRegex = /^(Invoice\s*(Number|#))/i;
+    pageTexts.forEach((pageText) => {
+      const cleanText = getRealText(pageText);
+      if (invoiceHeaderRegex.test(cleanText) && currentGroup.length > 0) {
+        invoiceGroups.push(currentGroup.join("\n"));
+        currentGroup = [pageText];
+      } else {
+        currentGroup.push(pageText);
+      }
+    });
+    if (currentGroup.length > 0) {
+      invoiceGroups.push(currentGroup.join("\n"));
+    }
+    return invoiceGroups;
+  }, []);
+
+  const readPDF = useCallback(async (file) => {
+    const fileReader = new FileReader();
+    return new Promise((resolve, reject) => {
+      fileReader.onload = async function () {
+        try {
+          const typedArray = new Uint8Array(this.result);
+          const pdf = await pdfjs.getDocument(typedArray).promise;
+          const pageTexts = [];
+          for (let i = 1; i <= pdf.numPages; i++) {
+            const page = await pdf.getPage(i);
+            const textContent = await page.getTextContent();
+            const pageText = textContent.items.map(item => item.str).join(" ");
+            pageTexts.push(`Page ${i}:\n${pageText}`);
+          }
+          resolve(pageTexts);
+        } catch (err) {
+          reject(err);
+        }
+      };
+      fileReader.readAsArrayBuffer(file);
+    });
+  }, []);
+
+  const validateFiles = useCallback((files) => {
+    const MAX_SIZE = 5 * 1024 * 1024;
+    const validFiles = [];
+    Array.from(files).forEach(file => {
+      if (file.type !== 'application/pdf') {
+        setError(`Invalid file type: ${file.name} is not a PDF`);
+      } else if (file.size > MAX_SIZE) {
+        setError(`File too large: ${file.name} exceeds 5MB`);
+      } else {
+        validFiles.push(file);
+      }
+    });
+    return validFiles;
+  }, []);
 
   return (
     <div style={{ minHeight: '100vh' }} className="flex items-center justify-center bg-gray-100 p-4 sm:p-6 lg:p-8">
       <Card sx={{ padding: 2, maxWidth: 500, width: '100%' }}>
         <CardContent>
-          {/* Status indicator */}
-          <div style={{ position: 'absolute', top: 16, right: 16, display: 'flex', alignItems: 'center' }}>
+          {/* Status Indicator with ARIA live region */}
+          <div
+            style={{ position: 'absolute', top: 16, right: 16, display: 'flex', alignItems: 'center' }}
+            role="status"
+            aria-live="polite"
+          >
             <div
               style={{
                 width: 8,
@@ -621,6 +645,34 @@ function PdfUploadChatGPTApp() {
                           Improve
                         </Button>
                       )}
+                      {/* Revision History Accordion */}
+                      {revisionHistory[idx] && revisionHistory[idx].length > 0 && (
+                        <Accordion style={{ marginTop: 8 }}>
+                          <AccordionSummary
+                            expandIcon={<ExpandMoreIcon />}
+                            aria-controls="revision-content"
+                            id={`revision-header-${idx}`}
+                          >
+                            <Typography variant="subtitle2">View Previous Versions</Typography>
+                          </AccordionSummary>
+                          <AccordionDetails>
+                            {revisionHistory[idx].map((rev, revIdx) => (
+                              <div key={revIdx} style={{ marginBottom: '8px' }}>
+                                <Typography variant="caption" display="block">
+                                  Version {revIdx + 1}
+                                </Typography>
+                                <ReactMarkdown 
+                                  remarkPlugins={[remarkGfm]} 
+                                  rehypePlugins={[rehypeRaw]}
+                                  className="prose prose-sm max-w-none"
+                                >
+                                  {rev}
+                                </ReactMarkdown>
+                              </div>
+                            ))}
+                          </AccordionDetails>
+                        </Accordion>
+                      )}
                       {/* Copy to clipboard button */}
                       <div style={{ marginTop: 8, textAlign: 'right' }}>
                         <Button onClick={() => copyToClipboard(response)}>
@@ -635,6 +687,17 @@ function PdfUploadChatGPTApp() {
           )}
         </CardContent>
       </Card>
+      {/* Snackbar Notification */}
+      <Snackbar
+        open={notification.open}
+        autoHideDuration={4000}
+        onClose={handleCloseNotification}
+        anchorOrigin={{ vertical: 'bottom', horizontal: 'center' }}
+      >
+        <Alert onClose={handleCloseNotification} severity={notification.severity} sx={{ width: '100%' }}>
+          {notification.message}
+        </Alert>
+      </Snackbar>
     </div>
   );
 }

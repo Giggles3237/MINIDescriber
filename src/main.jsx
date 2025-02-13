@@ -1,25 +1,16 @@
 import React from 'react';
-import ReactDOM from 'react-dom';
-import PdfUploadChatGPTApp from './PdfUploadChatGPTApp';
-import { CssBaseline, ThemeProvider, createTheme } from '@mui/material';
+import ReactDOM from 'react-dom/client'; // Changed import from 'react-dom' to 'react-dom/client'
+import App from './App';
 
-const theme = createTheme({
-  palette: {
-    primary: {
-      main: "#1976d2",
-    },
-    secondary: {
-      main: "#dc004e",
-    },
-  },
-});
+// Get the root element from your HTML (typically with id 'root')
+const container = document.getElementById('root');
 
-ReactDOM.render(
+// Create a root using React 18 API
+const root = ReactDOM.createRoot(container);
+
+// Render your application using the 'root' object
+root.render(
   <React.StrictMode>
-    <ThemeProvider theme={theme}>
-      <CssBaseline />
-      <PdfUploadChatGPTApp />
-    </ThemeProvider>
-  </React.StrictMode>,
-  document.getElementById('root')
+    <App />
+  </React.StrictMode>
 );
