@@ -1,9 +1,13 @@
+import { ThemeProvider } from '@mui/material/styles';
+import { theme } from './theme';
 import PdfUploadChatGPTApp from './PdfUploadChatGPTApp';
 
 export default function App() {
   return (
-    <div className="App">
-      <PdfUploadChatGPTApp />
-    </div>
+    <ThemeProvider theme={theme}>
+      <div className="App">
+        <PdfUploadChatGPTApp />
+      </div>
+    </ThemeProvider>
   );
 }

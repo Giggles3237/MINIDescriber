@@ -14,6 +14,7 @@ import remarkGfm from 'remark-gfm';
 import * as pdfjs from 'pdfjs-dist/legacy/build/pdf';
 // MUI Icon for accordion expansion
 import ExpandMoreIcon from '@mui/icons-material/ExpandMore';
+import CopyOptions from './components/CopyOptions';
 
 import describerLogo from './icons/Logo 2.png';
 import miniLogo from './icons/MOP.png';
@@ -66,13 +67,13 @@ const defaultPrompts = {
   MINI: `You are an expert automotive copywriter specializing in MINI Cooper vehicles.
 You are given a document containing multiple invoices. Each invoice starts with the header "Vehicle Inquiry".
 For each invoice, generate an engaging, high-converting description for a car listing:
-- Write two compelling paragraphs capturing the vehicle's essence.
+- Write two compelling paragraphs capturing the vehicle's essence.List options in BOLD
 - Follow with a clear, skimmable bullet-point list of key features.
 - Avoid technical jargon and use Markdown formatting.`,
   BMW: `You are an expert automotive copywriter specializing in BMW vehicles. Your task is to create engaging, high-converting descriptions that appeal to online car shoppers.
 Avoid overly technical jargon. NO model codes. Ensure that Year Make and model only once in the description.
 Augment the documents with your own knowledge of the vehicle to make the description more engaging and informative.
-Write two compelling paragraphs that capture the character and value of the used vehicle, emphasizing its features, in a tone that is both informative and inviting.
+- Write two compelling paragraphs capturing the vehicle's essence.List options in BOLD
 Seamlessly integrate key details into the narrative rather than listing them mechanically.
 - Follow the description with a clear, skimmable bullet-point list of essential options only expanding package content where applicable.
 - Use the model name (not the code), and format in Markdown.`,
@@ -80,7 +81,7 @@ Seamlessly integrate key details into the narrative rather than listing them mec
 Your task is to create persuasive, conversion-focused descriptions that effectively showcase the vehicle's standout options, proven reliability, and exceptional value to convert buyers.
 Avoid overly technical jargon. NO model codes. Ensure that Year Make and model only once in the description.
 Augment the documents with your own knowledge of the vehicle to make the description more accurate, engaging and informative.
-- Write two compelling paragraphs that capture the character and value of the used vehicle, emphasizing its unique features, current performance, and overall quality in a tone that is both informative and inviting.
+- Write two compelling paragraphs capturing the vehicle's essence.List options in BOLD
 - Seamlessly integrate key details into the narrative rather than listing them mechanically.
 - Follow the description with a clear, skimmable bullet-point list of essential options only.
 - Use the model name (not the code), and format in Markdown.`,
@@ -452,390 +453,295 @@ function PdfUploadChatGPTApp() {
     window.location.href = "mailto:laskocreative@gmail.com?subject=Feature%20Request&body=Hi,%0A%0APlease describe the feature you would like to request:";
   };
 
+  const improveDescription = async (currentDescription, improvementRequest) => {
+    const messages = [
+      { role: "system", content: systemMessage },
+      { role: "assistant", content: currentDescription },
+      { role: "user", content: `Please improve this description based on the following request: ${improvementRequest}. Maintain the same format and style.` }
+    ];
+
+    const response = await fetch('https://api.openai.com/v1/chat/completions', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${openAiApiKey}`
+      },
+      body: JSON.stringify({
+        model: 'gpt-4-turbo-preview',
+        messages: messages,
+        temperature: 0.7,
+      }),
+    });
+
+    if (!response.ok) {
+      throw new Error(`API call failed: ${response.statusText}`);
+    }
+
+    const data = await response.json();
+    return data.choices[0].message.content;
+  };
+
+  const handleImprove = (response) => {
+    const currentIndex = responses.indexOf(response);
+    setRefinementOpen(prev => ({
+      ...prev,
+      [currentIndex]: true
+    }));
+  };
+
+  const handleRefinement = async (index) => {
+    const refinementPrompt = refinementInputs[index];
+    if (!refinementPrompt) return;
+
+    setIsLoading(true);
+    setError(null);
+
+    try {
+      const improvedResponse = await improveDescription(responses[index], refinementPrompt);
+      setResponses(prev => [...prev, improvedResponse]);
+      setRefinementOpen(prev => ({
+        ...prev,
+        [index]: false
+      }));
+      setRefinementInputs(prev => ({
+        ...prev,
+        [index]: ''
+      }));
+      setNotification({
+        open: true,
+        message: 'Description improved successfully!',
+        severity: 'success'
+      });
+    } catch (err) {
+      setError('Failed to improve description: ' + err.message);
+      setNotification({
+        open: true,
+        message: 'Failed to improve description',
+        severity: 'error'
+      });
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
   return (
-    <div style={{ minHeight: '100vh', backgroundColor: '#f3f4f6', padding: '16px' }}>
-      <div style={{ display: 'flex', gap: '16px', maxWidth: '1200px', margin: '0 auto', flexWrap: 'wrap' }}>
-        {/* Left Column: Inputs and Advanced Options */}
-        <div style={{ flex: '1 1 300px' }}>
-          <Card style={{ padding: '16px', marginBottom: '16px' }}>
+    <div style={{ width: '100%', maxWidth: '1200px', margin: '0 auto' }}>
+      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '20px', marginTop: '20px' }}>
+        <div style={{ gridColumn: '1' }}>
+          <Card>
             <CardContent>
-              <header style={{ textAlign: 'center', marginBottom: '16px' }}>
-                <motion.img
-                  initial={{ opacity: 0 }}
-                  animate={{ opacity: 1 }}
-                  src={describerLogo}
-                  alt="Describer Logo"
-                  style={{ width: '96px', margin: '0 auto' }}
+              <div style={{ display: 'flex', justifyContent: 'center', marginBottom: '20px' }}>
+                <img 
+                  src={selectedType === 'MINI' ? miniLogo : bmwLogo} 
+                  alt={`${selectedType} Logo`}
+                  style={{ height: '40px', width: 'auto' }}
                 />
-                <motion.h1
-                  initial={{ opacity: 0, y: -10 }}
-                  animate={{ opacity: 1, y: 0 }}
-                  style={{ fontSize: '1.5rem', fontWeight: 'bold', marginTop: '8px' }}
+              </div>
+              <Typography variant="h6" gutterBottom align="center">
+                Upload PDF
+              </Typography>
+              <input
+                type="file"
+                accept="application/pdf"
+                onChange={handleFileChange}
+                style={{ display: 'none' }}
+                id="pdf-upload"
+              />
+              <label htmlFor="pdf-upload">
+                <Button
+                  variant="contained"
+                  component="span"
+                  style={{ 
+                    marginBottom: '10px',
+                    backgroundColor: selectedType === 'MINI' ? '#70B62C' : '#0066B1',
+                    width: '100%'
+                  }}
                 >
-                  Describer
-                </motion.h1>
-              </header>
-              {/* File Upload */}
-              <div 
-                style={{
-                  border: isDragging ? '2px solid #3f51b5' : '2px dashed #ccc',
-                  borderRadius: '8px',
-                  padding: '16px',
-                  transition: 'all 0.3s',
-                  position: 'relative'
-                }}
-                onDragEnter={handleDrag}
-                onDragLeave={handleDrag}
-                onDragOver={handleDrag}
-                onDrop={handleDrop}
-                onKeyDown={handleKeyDown}
-                tabIndex="0"
-                role="button"
-                aria-label="Upload PDF documents"
-              >
-                <Typography variant="subtitle1" gutterBottom>
-                  Upload your PDF documents:
-                </Typography>
-                <input
-                  id="file-upload"
-                  type="file"
-                  accept="application/pdf"
-                  multiple
-                  onChange={handleFileChange}
-                  style={{ width: '100%' }}
-                  aria-label="Choose PDF files"
-                  onFocus={() => setIsFocused(true)}
-                  onBlur={() => setIsFocused(false)}
-                />
-                <div style={{ marginTop: '8px', textAlign: 'center' }}>
-                  <Typography variant="body2" color="textSecondary">
-                    Drag and drop your files here, or click to select files
-                  </Typography>
-                </div>
-                {selectedFiles.length > 0 && (
-                  <Typography variant="caption" color="textSecondary" style={{ marginTop: '4px', display: 'block' }}>
-                    {selectedFiles.length} file(s) selected
-                  </Typography>
-                )}
-              </div>
-              {/* Document Type */}
-              <div style={{ marginTop: '16px' }}>
-                <label htmlFor="documentType" style={{ display: 'block', fontSize: '0.875rem', color: '#4b5563', marginBottom: '8px' }}>
-                  Document Type:
-                </label>
-                <Select
-                  id="documentType"
-                  options={invoiceOptions}
-                  value={invoiceOptions.find(opt => opt.value === selectedType)}
-                  onChange={(selectedOption) => setSelectedType(selectedOption.value)}
-                  styles={customSelectStyles}
-                  aria-label="Select document type"
-                />
-                {selectedType === 'USED' && (
-                  <div style={{ marginTop: '12px' }}>
-                    <Typography variant="subtitle1" gutterBottom>Mileage:</Typography>
-                    <input
-                      id="mileage"
-                      type="text"
-                      value={mileage}
-                      onChange={(e) => setMileage(e.target.value)}
-                      style={{ width: '100%', padding: '8px', fontSize: '0.875rem' }}
-                      placeholder="Enter vehicle mileage"
-                    />
-                  </div>
-                )}
-              </div>
-              {/* Advanced Options */}
-              <div style={{ marginTop: '16px', textAlign: 'center' }}>
-                <Button variant="outlined" onClick={() => setShowAdvanced(!showAdvanced)}>
-                  {showAdvanced ? "Hide Advanced Options" : "Show Advanced Options"}
+                  Choose File
                 </Button>
+              </label>
+              {selectedFiles.length > 0 && (
+                <Typography variant="body2" align="center">
+                  Selected: {selectedFiles[0].name}
+                </Typography>
+              )}
+
+              <div style={{ marginTop: '20px' }}>
+                <Typography variant="subtitle1" gutterBottom>
+                  Description Type
+                </Typography>
+                <Select
+                  options={invoiceOptions}
+                  value={invoiceOptions.find(option => option.value === selectedType)}
+                  onChange={(option) => setSelectedType(option.value)}
+                  styles={customSelectStyles}
+                />
               </div>
-              {showAdvanced && (
-                <div style={{ marginTop: '16px', padding: '12px', border: '1px solid #ddd', borderRadius: '4px', background: '#f9f9f9' }}>
-                  {selectedFiles.length > 0 && (
-                    <div style={{ marginBottom: '16px', textAlign: 'center' }}>
-                      <Button variant="outlined" onClick={handlePreview} disabled={isLoading}>
-                        {isLoading ? <CircularProgress size={24} /> : 'Preview PDF Content'}
+
+              <div style={{ marginTop: '20px' }}>
+                <Typography variant="subtitle1" gutterBottom>
+                  Tone & Style
+                </Typography>
+                <Select
+                  options={toneOptions}
+                  value={toneOptions.find(option => option.value === toneStyle)}
+                  onChange={(option) => setToneStyle(option.value)}
+                  styles={customSelectStyles}
+                />
+              </div>
+
+              <Button
+                variant="contained"
+                color="primary"
+                onClick={handleAnalyze}
+                disabled={isLoading || selectedFiles.length === 0}
+                style={{ marginTop: '20px', width: '100%' }}
+              >
+                {isLoading ? 'Processing...' : 'Generate Description'}
+              </Button>
+
+              <Accordion 
+                expanded={showAdvanced}
+                onChange={() => setShowAdvanced(!showAdvanced)}
+                style={{ marginTop: '20px' }}
+              >
+                <AccordionSummary expandIcon={<ExpandMoreIcon />}>
+                  <Typography>Advanced Settings</Typography>
+                </AccordionSummary>
+                <AccordionDetails>
+                  <TextField
+                    label="Call to Action"
+                    value={callToAction}
+                    onChange={(e) => setCallToAction(e.target.value)}
+                    fullWidth
+                    margin="normal"
+                  />
+                  <Button
+                    variant="outlined"
+                    onClick={togglePromptSettings}
+                    style={{ marginTop: '10px' }}
+                  >
+                    Edit Prompts
+                  </Button>
+                </AccordionDetails>
+              </Accordion>
+            </CardContent>
+          </Card>
+          
+          {selectedFiles.length > 0 && (
+            <Card style={{ marginTop: '20px', height: '500px', overflow: 'auto' }}>
+              <CardContent>
+                <Typography variant="h6" gutterBottom>
+                  PDF Preview
+                </Typography>
+                <PdfThumbnail file={selectedFiles[0]} onClick={handleThumbnailClick} />
+              </CardContent>
+            </Card>
+          )}
+        </div>
+
+        <div style={{ gridColumn: '2 / span 2' }}>
+          <Card>
+            <CardContent>
+              {isLoading && <LinearProgress />}
+              {error && (
+                <Alert severity="error" style={{ marginBottom: '10px' }}>
+                  {error}
+                </Alert>
+              )}
+              {responses.map((response, index) => (
+                <div key={index} style={{ marginBottom: '20px', position: 'relative' }}>
+                  <Typography variant="subtitle2" color="textSecondary" gutterBottom>
+                    Version {index + 1}
+                  </Typography>
+                  <ReactMarkdown
+                    rehypePlugins={[rehypeRaw]}
+                    remarkPlugins={[remarkGfm]}
+                    components={{
+                      p: ({ children }) => (
+                        <Typography variant="body1">{children}</Typography>
+                      ),
+                      h1: ({ children }) => (
+                        <Typography variant="h3">{children}</Typography>
+                      ),
+                      h2: ({ children }) => (
+                        <Typography variant="h4">{children}</Typography>
+                      ),
+                      h3: ({ children }) => (
+                        <Typography variant="h5">{children}</Typography>
+                      ),
+                      li: ({ children }) => (
+                        <Typography component="li" variant="body1" style={{ display: 'list-item' }}>{children}</Typography>
+                      ),
+                    }}
+                  >
+                    {response}
+                  </ReactMarkdown>
+                  <div style={{ position: 'absolute', top: '0', right: '0', display: 'flex', gap: '8px' }}>
+                    <CopyOptions 
+                      text={response} 
+                      onCopy={(message) => setNotification({ open: true, message, severity: 'success' })} 
+                    />
+                    {index === responses.length - 1 && (
+                      <Button
+                        variant="outlined"
+                        size="small"
+                        onClick={() => handleImprove(response)}
+                        disabled={isLoading}
+                      >
+                        Improve
+                      </Button>
+                    )}
+                  </div>
+                  {refinementOpen[index] && (
+                    <div style={{ marginTop: '10px' }}>
+                      <TextField
+                        fullWidth
+                        multiline
+                        rows={2}
+                        variant="outlined"
+                        placeholder="What would you like to improve about this description?"
+                        value={refinementInputs[index] || ''}
+                        onChange={(e) => {
+                          setRefinementInputs(prev => ({
+                            ...prev,
+                            [index]: e.target.value
+                          }));
+                        }}
+                      />
+                      <Button
+                        variant="contained"
+                        color="primary"
+                        onClick={() => handleRefinement(index)}
+                        style={{ marginTop: '10px' }}
+                        disabled={isLoading || !refinementInputs[index]}
+                      >
+                        Submit Improvement
                       </Button>
                     </div>
                   )}
-                  {previewGroups.length > 0 && (
-                    <div style={{ marginBottom: '16px' }}>
-                      <Typography variant="subtitle1" gutterBottom>
-                        Preview & Select Content Groups:
-                      </Typography>
-                      {previewGroups.map(group => (
-                        <div key={group.id} style={{ display: 'flex', alignItems: 'center', marginBottom: '8px', background: '#fafafa', padding: '8px', borderRadius: '4px' }}>
-                          <input 
-                            type="checkbox" 
-                            checked={group.selected} 
-                            onChange={() => toggleGroupSelection(group.id)} 
-                            style={{ marginRight: '8px' }}
-                            aria-label="Select content group"
-                          />
-                          <Typography variant="body2" style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                            {group.text.slice(0, 100)}...
-                          </Typography>
-                        </div>
-                      ))}
-                    </div>
-                  )}
-                  <div style={{ marginBottom: '16px' }}>
-                    <div style={{ marginBottom: '12px' }}>
-                      <label style={{ display: 'block', fontSize: '0.875rem', color: '#4b5563', marginBottom: '8px' }}>Tone & Style:</label>
-                      <Select
-                        options={toneOptions}
-                        value={toneOptions.find(opt => opt.value === toneStyle)}
-                        onChange={(selectedOption) => setToneStyle(selectedOption.value)}
-                        styles={customSelectStyles}
-                        aria-label="Select tone and style"
-                      />
-                    </div>
-                    <div style={{ marginBottom: '12px' }}>
-                      <TextField
-                        label="Call-to-Action"
-                        fullWidth
-                        variant="outlined"
-                        value={callToAction}
-                        onChange={(e) => setCallToAction(e.target.value)}
-                        placeholder="Enter a call-to-action (e.g., Schedule your test drive today!)"
-                        aria-label="Call-to-Action input"
-                      />
-                    </div>
-                    <Accordion style={{ marginTop: '16px' }}>
-                      <AccordionSummary
-                        expandIcon={<ExpandMoreIcon />}
-                        aria-controls="prompt-settings-content"
-                        id="prompt-settings-header"
-                      >
-                        <Typography variant="subtitle2">Prompt Settings for {selectedType}</Typography>
-                      </AccordionSummary>
-                      <AccordionDetails>
-                        <TextField
-                          label="Custom Prompt Template"
-                          multiline
-                          fullWidth
-                          variant="outlined"
-                          value={customPrompts[selectedType]}
-                          onChange={handlePromptChange}
-                          aria-label="Custom prompt template"
-                        />
-                        <Button variant="contained" color="primary" onClick={togglePromptSettings} style={{ marginTop: '8px' }}>
-                          {showPromptSettings ? "Hide" : "Show"} Instructions
-                        </Button>
-                        {showPromptSettings && (
-                          <Typography variant="caption" display="block" style={{ marginTop: '8px' }}>
-                            Edit the prompt template above to tailor how the description is generated.
-                          </Typography>
-                        )}
-                      </AccordionDetails>
-                    </Accordion>
-                  </div>
                 </div>
-              )}
-            </CardContent>
-          </Card>
-        </div>
-        {/* Middle Column: Results */}
-        <div style={{ flex: '1 1 300px' }}>
-          <Card style={{ padding: '16px' }}>
-            <CardContent>
-              {isLoading && (
-                <div style={{ marginTop: '16px' }}>
-                  <LinearProgress variant="determinate" value={progress} />
-                  <Typography variant="caption" display="block" align="center">{progress}% completed</Typography>
-                </div>
-              )}
-              {(selectedFiles.length > 0 || previewGroups.length > 0) && (
-                <div style={{ marginTop: '16px', textAlign: 'center' }}>
-                  <Button variant="contained" onClick={handleAnalyze} disabled={isLoading}>
-                    {isLoading ? <CircularProgress size={24} /> : 'Generate Description'}
-                  </Button>
-                </div>
-              )}
-              {error && (
-                <div style={{ marginTop: '16px', padding: '16px', backgroundColor: '#ffebee', border: '1px solid #ef9a9a', borderRadius: '4px' }}>
-                  <Typography variant="body2" color="error">{error}</Typography>
-                </div>
-              )}
-              {responses.length > 0 && (
-                <div style={{ marginTop: '32px' }}>
-                  {responses.map((response, idx) => (
-                    <motion.div
-                      key={idx}
-                      initial={{ opacity: 0, y: 20 }}
-                      animate={{ opacity: 1, y: 0 }}
-                      transition={{ duration: 0.3 }}
-                      style={{ marginBottom: '16px' }}
-                    >
-                      <Card variant="outlined">
-                        <CardContent>
-                          <ReactMarkdown 
-                            remarkPlugins={[remarkGfm]} 
-                            rehypePlugins={[rehypeRaw]}
-                            className="prose prose-sm max-w-none"
-                            components={{
-                              h2: ({ ...props }) => <h2 className="text-xl font-semibold mt-4 mb-2" {...props} />,
-                              ul: ({ ...props }) => <ul className="list-disc pl-6 mb-4" {...props} />,
-                              strong: ({ ...props }) => <strong className="font-semibold text-gray-800" {...props} />
-                            }}
-                          >
-                            {response}
-                          </ReactMarkdown>
-                          {refinementOpen[idx] ? (
-                            <div style={{ marginTop: '8px' }}>
-                              <TextField
-                                label="Refinement instructions"
-                                multiline
-                                fullWidth
-                                variant="outlined"
-                                value={refinementInputs[idx] || ""}
-                                onChange={(e) => setRefinementInputs(prev => ({ ...prev, [idx]: e.target.value }))}
-                              />
-                              <Button
-                                variant="contained"
-                                color="primary"
-                                onClick={() => {
-                                  const currentResponse = responses[idx];
-                                  const improvementInstructions = refinementInputs[idx];
-                                  if (!improvementInstructions) return;
-                                  const requestBody = {
-                                    model: "gpt-4o-mini",
-                                    messages: [
-                                      { role: "system", content: systemMessage },
-                                      { role: "assistant", content: currentResponse },
-                                      { role: "user", content: improvementInstructions }
-                                    ],
-                                    max_tokens: 1000,
-                                    temperature: 0.7,
-                                  };
-                                  (async () => {
-                                    try {
-                                      setIsLoading(true);
-                                      setApiStatus('loading');
-                                      const res = await fetch("https://api.openai.com/v1/chat/completions", {
-                                        method: "POST",
-                                        headers: {
-                                          "Content-Type": "application/json",
-                                          Authorization: `Bearer ${openAiApiKey}`,
-                                        },
-                                        body: JSON.stringify(requestBody),
-                                      });
-                                      const data = await res.json();
-                                      if (data.choices && data.choices.length > 0) {
-                                        const newResponse = data.choices[0].message.content;
-                                        setRevisionHistory(prev => {
-                                          const history = prev[idx] ? [...prev[idx]] : [];
-                                          history.push(currentResponse);
-                                          return { ...prev, [idx]: history };
-                                        });
-                                        setResponses(prev => {
-                                          const updated = [...prev];
-                                          updated[idx] = newResponse;
-                                          return updated;
-                                        });
-                                        setRefinementOpen(prev => ({ ...prev, [idx]: false }));
-                                        setNotification({ open: true, message: "Response refined successfully!", severity: "success" });
-                                      }
-                                      setApiStatus("idle");
-                                    } catch (error) {
-                                      console.error(error);
-                                      setError(`Error refining response: ${error.message}`);
-                                      setApiStatus("error");
-                                      setNotification({ open: true, message: `Error refining response: ${error.message}`, severity: "error" });
-                                    } finally {
-                                      setIsLoading(false);
-                                    }
-                                  })();
-                                }}
-                                style={{ marginTop: '8px' }}
-                              >
-                                Submit Improvement
-                              </Button>
-                            </div>
-                          ) : (
-                            <Button
-                              variant="text"
-                              onClick={() => setRefinementOpen(prev => ({ ...prev, [idx]: true }))}
-                              style={{ marginTop: '8px' }}
-                            >
-                              Improve
-                            </Button>
-                          )}
-                          {revisionHistory[idx] && revisionHistory[idx].length > 0 && (
-                            <Accordion style={{ marginTop: '8px' }}>
-                              <AccordionSummary
-                                expandIcon={<ExpandMoreIcon />}
-                                aria-controls="revision-content"
-                                id={`revision-header-${idx}`}
-                              >
-                                <Typography variant="subtitle2">View Previous Versions (Side-by-Side)</Typography>
-                              </AccordionSummary>
-                              <AccordionDetails style={{ display: 'flex', flexWrap: 'wrap', gap: '8px' }}>
-                                {revisionHistory[idx].map((rev, revIdx) => (
-                                  <div key={revIdx} style={{ flex: '1 1 45%', background: '#f5f5f5', padding: '8px', borderRadius: '4px' }}>
-                                    <Typography variant="caption" display="block">
-                                      Version {revIdx + 1}
-                                    </Typography>
-                                    <ReactMarkdown 
-                                      remarkPlugins={[remarkGfm]} 
-                                      rehypePlugins={[rehypeRaw]}
-                                      className="prose prose-sm max-w-none"
-                                    >
-                                      {rev}
-                                    </ReactMarkdown>
-                                  </div>
-                                ))}
-                              </AccordionDetails>
-                            </Accordion>
-                          )}
-                          <div style={{ marginTop: '8px', textAlign: 'right' }}>
-                            <Button onClick={() => copyToClipboard(response)} aria-label="Copy to clipboard">
-                              <ClipboardCopy className="h-4 w-4" />
-                            </Button>
-                          </div>
-                        </CardContent>
-                      </Card>
-                    </motion.div>
-                  ))}
-                </div>
-              )}
-            </CardContent>
-          </Card>
-        </div>
-        {/* Third Column: PDF Previews */}
-        <div style={{ flex: '1 1 300px' }}>
-          <Card style={{ padding: '16px' }}>
-            <CardContent>
-              <Typography variant="h6" style={{ textAlign: 'center', marginBottom: '16px' }}>
-                PDF Previews
-              </Typography>
-              {selectedFiles.length > 0 ? (
-                selectedFiles.map((file, idx) => (
-                  <PdfThumbnail key={idx} file={file} onClick={handleThumbnailClick} />
-                ))
-              ) : (
-                <Typography variant="body2" style={{ textAlign: 'center' }}>
-                  No PDFs selected.
-                </Typography>
-              )}
+              ))}
             </CardContent>
           </Card>
         </div>
       </div>
+      
       <Snackbar
         open={notification.open}
-        autoHideDuration={4000}
+        autoHideDuration={3000}
         onClose={handleCloseNotification}
-        anchorOrigin={{ vertical: 'bottom', horizontal: 'center' }}
       >
-        <Alert onClose={handleCloseNotification} severity={notification.severity} style={{ width: '100%' }}>
+        <Alert onClose={handleCloseNotification} severity={notification.severity}>
           {notification.message}
         </Alert>
       </Snackbar>
-      {/* PDF Viewer Dialog */}
-      <PdfViewerDialog file={selectedPdf} open={Boolean(selectedPdf)} onClose={() => setSelectedPdf(null)} />
+
+      <PdfViewerDialog
+        file={selectedPdf}
+        open={Boolean(selectedPdf)}
+        onClose={() => setSelectedPdf(null)}
+      />
     </div>
   );
 }
