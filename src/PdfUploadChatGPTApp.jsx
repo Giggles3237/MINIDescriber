@@ -134,6 +134,23 @@ function PdfThumbnail({ file, onClick }) {
 // Lazy load PdfViewerDialog for improved initial load performance
 const PdfViewerDialog = React.lazy(() => import('./components/PdfViewerDialog'));
 
+function extractVehicleInfo(text) {
+  // Using regex to find info after keywords. Adjust patterns if your format differs.
+  const yearMatch = text.match(/(?:Year[:\s]+)(\d{4})/i);
+  const makeMatch = text.match(/(?:Make[:\s]+)(\w+)/i);
+  const modelMatch = text.match(/(?:Model[:\s]+)([A-Za-z0-9\-]+)/i);
+  const colorMatch = text.match(/(?:Color[:\s]+)([A-Za-z\s]+)/i);
+  const vinMatch = text.match(/(?:VIN[:\s]+)([A-Z0-9]+)/i);
+  
+  return {
+    year: yearMatch ? yearMatch[1] : "N/A",
+    make: makeMatch ? makeMatch[1] : "N/A",
+    model: modelMatch ? modelMatch[1] : "N/A",
+    color: colorMatch ? colorMatch[1].trim() : "N/A",
+    vin: vinMatch ? vinMatch[1] : "N/A",
+  };
+}
+
 function PdfUploadChatGPTApp() {
   const [selectedFiles, setSelectedFiles] = useState([]);
   const [selectedType, setSelectedType] = useState("MINI");
@@ -632,22 +649,31 @@ function PdfUploadChatGPTApp() {
                 <Typography variant="h6" gutterBottom>
                   Preview Content Groups
                 </Typography>
-                {previewGroups.map(group => (
-                  <div 
-                    key={group.id} 
-                    onClick={() => toggleGroupSelection(group.id)}
-                    style={{ 
-                      border: '1px solid #ddd', 
-                      padding: '10px', 
-                      marginBottom: '10px', 
-                      backgroundColor: group.selected ? '#d0f0c0' : '#f0f0f0', 
-                      cursor: 'pointer' 
-                    }}
-                  >
-                    <Typography variant="subtitle2">{group.id}</Typography>
-                    <Typography variant="body2">{group.text.substring(0, 100)}...</Typography>
-                  </div>
-                ))}
+                {previewGroups.map(group => {
+                  const vehicleInfo = extractVehicleInfo(group.text);
+                  return (
+                    <div 
+                      key={group.id} 
+                      onClick={() => toggleGroupSelection(group.id)}
+                      style={{ 
+                        border: '1px solid #ddd', 
+                        padding: '10px', 
+                        marginBottom: '10px', 
+                        backgroundColor: group.selected ? '#d0f0c0' : '#f0f0f0', 
+                        cursor: 'pointer' 
+                      }}
+                    >
+                      <Typography variant="subtitle2">{group.id}</Typography>
+                      <Typography variant="body2">{group.text.substring(0, 100)}...</Typography>
+                      <Typography variant="body2">
+                        Year: {vehicleInfo.year}, Make: {vehicleInfo.make}, Model: {vehicleInfo.model}
+                      </Typography>
+                      <Typography variant="body2">
+                        Color: {vehicleInfo.color}, VIN: {vehicleInfo.vin}
+                      </Typography>
+                    </div>
+                  );
+                })}
               </CardContent>
             </Card>
           )}
@@ -765,11 +791,13 @@ function PdfUploadChatGPTApp() {
       </Snackbar>
 
       <Suspense fallback={<div>Loading PDF Viewer...</div>}>
-        <PdfViewerDialog
-          file={selectedPdf}
-          open={Boolean(selectedPdf)}
-          onClose={() => setSelectedPdf(null)}
-        />
+        {selectedPdf && (
+          <PdfViewerDialog
+            isOpen={true}
+            pdfUrl={URL.createObjectURL(selectedPdf)}
+            onClose={() => setSelectedPdf(null)}
+          />
+        )}
       </Suspense>
     </div>
   );
