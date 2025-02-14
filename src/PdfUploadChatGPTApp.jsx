@@ -1,5 +1,4 @@
-import React, { useState, useCallback, useEffect } from 'react';
-import { motion } from 'framer-motion';
+import React, { useState, useCallback, useEffect, Suspense } from 'react';
 // MUI Components
 import Card from '@mui/material/Card';
 import CardContent from '@mui/material/CardContent';
@@ -7,7 +6,6 @@ import Button from '@mui/material/Button';
 import Typography from '@mui/material/Typography';
 import { CircularProgress, Snackbar, Alert, Accordion, AccordionSummary, AccordionDetails, TextField, LinearProgress, Dialog, DialogTitle, DialogContent, DialogActions } from '@mui/material';
 import Select from 'react-select';
-import { ClipboardCopy } from 'lucide-react';
 import ReactMarkdown from 'react-markdown';
 import rehypeRaw from 'rehype-raw';
 import remarkGfm from 'remark-gfm';
@@ -16,9 +14,8 @@ import * as pdfjs from 'pdfjs-dist/legacy/build/pdf';
 import ExpandMoreIcon from '@mui/icons-material/ExpandMore';
 import CopyOptions from './components/CopyOptions';
 
-import describerLogo from './icons/Logo 2.png';
-import miniLogo from './icons/MOP.png';
-import bmwLogo from './icons/BOP.png';
+// Use Logo 2 for upload section icon
+import logo2 from './icons/Logo 2.png';
 
 pdfjs.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
 
@@ -28,13 +25,19 @@ const openAiApiKey = import.meta.env.VITE_OPENAI_API_KEY;
 const customSelectStyles = {
   control: (provided, state) => ({
     ...provided,
+    fontFamily: 'sans-serif',
     backgroundColor: 'white',
     borderColor: state.isFocused ? '#3f51b5' : provided.borderColor,
     boxShadow: state.isFocused ? '0 0 0 1px #3f51b5' : provided.boxShadow,
   }),
   menu: (provided) => ({
     ...provided,
+    fontFamily: 'sans-serif',
     backgroundColor: 'white',
+  }),
+  option: (provided) => ({
+    ...provided,
+    fontFamily: 'sans-serif',
   })
 };
 
@@ -50,11 +53,11 @@ The description should be written in the style of a car sales manager writing a 
 - Write two compelling paragraphs that capture the essence of the vehicle, emphasizing its standout features, performance, and design in an engaging, conversational, brand appropriate tone.
 `;
 
+// Invoice Options without DeepSeek option
 const invoiceOptions = [
   { value: 'MINI', label: 'MINI' },
   { value: 'BMW', label: 'BMW' },
   { value: 'USED', label: 'Used' },
-  { value: 'DEEPSEEK', label: 'DeepSeek (Beta)' },
 ];
 
 const toneOptions = [
@@ -63,6 +66,7 @@ const toneOptions = [
   { value: 'Energetic', label: 'Energetic' },
 ];
 
+// Default prompts without the DeepSeek prompt
 const defaultPrompts = {
   MINI: `You are an expert automotive copywriter specializing in MINI Cooper vehicles.
 You are given a document containing multiple invoices. Each invoice starts with the header "Vehicle Inquiry".
@@ -70,6 +74,7 @@ For each invoice, generate an engaging, high-converting description for a car li
 - Write two compelling paragraphs capturing the vehicle's essence.List options in BOLD
 - Follow with a clear, skimmable bullet-point list of key features.
 - Avoid technical jargon and use Markdown formatting.`,
+  
   BMW: `You are an expert automotive copywriter specializing in BMW vehicles. Your task is to create engaging, high-converting descriptions that appeal to online car shoppers.
 Avoid overly technical jargon. NO model codes. Ensure that Year Make and model only once in the description.
 Augment the documents with your own knowledge of the vehicle to make the description more engaging and informative.
@@ -77,19 +82,16 @@ Augment the documents with your own knowledge of the vehicle to make the descrip
 Seamlessly integrate key details into the narrative rather than listing them mechanically.
 - Follow the description with a clear, skimmable bullet-point list of essential options only expanding package content where applicable.
 - Use the model name (not the code), and format in Markdown.`,
-  USED: `You are an automotive copywriter specializing in used cars. Examine this document thoroughly, building a comprehensive description of the vehicle. 
+  
+  USED: `You are an automotive copywriter specializing in used cars. Examine this document thoroughly, building a comprehensive description of the vehicle.
+When the document header includes "warranty vehicle inquiry", treat the vehicle as used and supplement the provided option information with your own deep knowledge of BMWs—highlighting aspects like options, service history, and performance.
 Your task is to create persuasive, conversion-focused descriptions that effectively showcase the vehicle's standout options, proven reliability, and exceptional value to convert buyers.
-Avoid overly technical jargon. NO model codes. Ensure that Year Make and model only once in the description.
-Augment the documents with your own knowledge of the vehicle to make the description more accurate, engaging and informative.
-- Write two compelling paragraphs capturing the vehicle's essence.List options in BOLD
+Avoid overly technical jargon. NO model codes. Ensure that Year, Make, and model are mentioned only once in the description.
+Augment the document with your BMW expertise to make the description more accurate, engaging, and informative.
+- Write two compelling paragraphs capturing the vehicle's essence. List options in BOLD.
 - Seamlessly integrate key details into the narrative rather than listing them mechanically.
 - Follow the description with a clear, skimmable bullet-point list of essential options only.
-- Use the model name (not the code), and format in Markdown.`,
-  DEEPSEEK: `You are an automotive copywriter with a unique voice—a stereotypical, angry Asian woman who isn't afraid to yell her praises (and critiques) in broken English. Your task is to craft a compelling and concise description for a used car that doesn't just sell the car, but also entertains the reader.
-Write a sharp, witty paragraph that highlights the key features and unique qualities of the vehicle, using language that's both punchy and playful.
-Emphasize the car's newness, luxury features, and smart technology in a way that feels like you're both boasting and poking fun at its sophistication.
-Include a brief, bullet-point list of essential features, keeping the tone light and the details clear.
-Use the model name (not the code), and format the description in Markdown.`
+- Use the model name (not the code), and format in Markdown.`
 };
 
 // PdfThumbnail component renders the first page of a PDF as a thumbnail and supports a click
@@ -129,55 +131,8 @@ function PdfThumbnail({ file, onClick }) {
   );
 }
 
-// PdfViewerDialog renders all pages of the PDF in a scrollable modal
-function PdfViewerDialog({ file, open, onClose }) {
-  const [pages, setPages] = useState([]);
-
-  useEffect(() => {
-    if (file && open) {
-      const renderAllPages = async () => {
-        try {
-          const data = await file.arrayBuffer();
-          const pdf = await pdfjs.getDocument(new Uint8Array(data)).promise;
-          const numPages = pdf.numPages;
-          const pagesData = [];
-          for (let i = 1; i <= numPages; i++) {
-            const page = await pdf.getPage(i);
-            const viewport = page.getViewport({ scale: 1.5 });
-            const canvas = document.createElement('canvas');
-            const context = canvas.getContext('2d');
-            canvas.width = viewport.width;
-            canvas.height = viewport.height;
-            await page.render({ canvasContext: context, viewport }).promise;
-            pagesData.push(canvas.toDataURL());
-          }
-          setPages(pagesData);
-        } catch (err) {
-          console.error("Error rendering PDF pages", err);
-        }
-      };
-      renderAllPages();
-    }
-  }, [file, open]);
-
-  return (
-    <Dialog open={open} onClose={onClose} fullWidth maxWidth="md">
-      <DialogTitle>{file ? file.name : "PDF Viewer"}</DialogTitle>
-      <DialogContent dividers style={{ maxHeight: '80vh', overflowY: 'auto' }}>
-        {pages.length > 0 ? (
-          pages.map((src, index) => (
-            <img key={index} src={src} alt={`Page ${index + 1}`} style={{ width: '100%', marginBottom: '16px' }} />
-          ))
-        ) : (
-          <CircularProgress />
-        )}
-      </DialogContent>
-      <DialogActions>
-        <Button onClick={onClose}>Close</Button>
-      </DialogActions>
-    </Dialog>
-  );
-}
+// Lazy load PdfViewerDialog for improved initial load performance
+const PdfViewerDialog = React.lazy(() => import('./components/PdfViewerDialog'));
 
 function PdfUploadChatGPTApp() {
   const [selectedFiles, setSelectedFiles] = useState([]);
@@ -422,7 +377,7 @@ function PdfUploadChatGPTApp() {
   const handleKeyDown = useCallback((e) => {
     if (e.key === 'Enter' || e.key === 'Space') {
       e.preventDefault();
-      document.getElementById('file-upload').click();
+      document.getElementById('pdf-upload').click();
     }
   }, []);
 
@@ -481,11 +436,10 @@ function PdfUploadChatGPTApp() {
     return data.choices[0].message.content;
   };
 
-  const handleImprove = (response) => {
-    const currentIndex = responses.indexOf(response);
+  const handleImprove = (index) => {
     setRefinementOpen(prev => ({
       ...prev,
-      [currentIndex]: true
+      [index]: true
     }));
   };
 
@@ -532,40 +486,55 @@ function PdfUploadChatGPTApp() {
             <CardContent>
               <div style={{ display: 'flex', justifyContent: 'center', marginBottom: '20px' }}>
                 <img 
-                  src={selectedType === 'MINI' ? miniLogo : bmwLogo} 
-                  alt={`${selectedType} Logo`}
+                  src={logo2} 
+                  alt="Upload Icon"
                   style={{ height: '40px', width: 'auto' }}
                 />
               </div>
               <Typography variant="h6" gutterBottom align="center">
                 Upload PDF
               </Typography>
-              <input
-                type="file"
-                accept="application/pdf"
-                onChange={handleFileChange}
-                style={{ display: 'none' }}
-                id="pdf-upload"
-              />
-              <label htmlFor="pdf-upload">
-                <Button
-                  variant="contained"
-                  component="span"
-                  style={{ 
-                    marginBottom: '10px',
-                    backgroundColor: selectedType === 'MINI' ? '#70B62C' : '#0066B1',
-                    width: '100%'
-                  }}
-                >
-                  Choose File
-                </Button>
-              </label>
+              <div
+                onDragEnter={handleDrag}
+                onDragOver={handleDrag}
+                onDragLeave={handleDrag}
+                onDrop={handleDrop}
+                onKeyDown={handleKeyDown}
+                tabIndex={0}
+                style={{
+                  border: isDragging ? '2px dashed #3f51b5' : '2px dashed #ccc',
+                  borderRadius: '4px',
+                  padding: '20px',
+                  textAlign: 'center'
+                }}
+              >
+                <input
+                  type="file"
+                  accept="application/pdf"
+                  onChange={handleFileChange}
+                  style={{ display: 'none' }}
+                  id="pdf-upload"
+                />
+                <label htmlFor="pdf-upload">
+                  <Button
+                    variant="contained"
+                    component="span"
+                    style={{ 
+                      marginBottom: '10px',
+                      backgroundColor: '#0066B1',
+                      width: '100%'
+                    }}
+                  >
+                    Choose File
+                  </Button>
+                </label>
+                {isDragging && <Typography variant="body2">Drop file here...</Typography>}
+              </div>
               {selectedFiles.length > 0 && (
                 <Typography variant="body2" align="center">
                   Selected: {selectedFiles[0].name}
                 </Typography>
               )}
-
               <div style={{ marginTop: '20px' }}>
                 <Typography variant="subtitle1" gutterBottom>
                   Description Type
@@ -577,7 +546,6 @@ function PdfUploadChatGPTApp() {
                   styles={customSelectStyles}
                 />
               </div>
-
               <div style={{ marginTop: '20px' }}>
                 <Typography variant="subtitle1" gutterBottom>
                   Tone & Style
@@ -589,17 +557,24 @@ function PdfUploadChatGPTApp() {
                   styles={customSelectStyles}
                 />
               </div>
-
+              <Button
+                variant="contained"
+                color="secondary"
+                onClick={handlePreview}
+                disabled={isLoading || selectedFiles.length === 0}
+                style={{ marginTop: '10px', width: '100%' }}
+              >
+                {isLoading ? 'Extracting...' : 'Extract Preview Groups'}
+              </Button>
               <Button
                 variant="contained"
                 color="primary"
                 onClick={handleAnalyze}
                 disabled={isLoading || selectedFiles.length === 0}
-                style={{ marginTop: '20px', width: '100%' }}
+                style={{ marginTop: '10px', width: '100%' }}
               >
                 {isLoading ? 'Processing...' : 'Generate Description'}
               </Button>
-
               <Accordion 
                 expanded={showAdvanced}
                 onChange={() => setShowAdvanced(!showAdvanced)}
@@ -623,6 +598,18 @@ function PdfUploadChatGPTApp() {
                   >
                     Edit Prompts
                   </Button>
+                  {showPromptSettings && (
+                    <TextField 
+                      label="Custom Prompt"
+                      value={customPrompts[selectedType]}
+                      onChange={handlePromptChange}
+                      multiline
+                      rows={4}
+                      fullWidth
+                      variant="outlined"
+                      margin="normal"
+                    />
+                  )}
                 </AccordionDetails>
               </Accordion>
             </CardContent>
@@ -638,92 +625,132 @@ function PdfUploadChatGPTApp() {
               </CardContent>
             </Card>
           )}
+          
+          {previewGroups.length > 0 && (
+            <Card style={{ marginTop: '20px', maxHeight: '300px', overflowY: 'auto' }}>
+              <CardContent>
+                <Typography variant="h6" gutterBottom>
+                  Preview Content Groups
+                </Typography>
+                {previewGroups.map(group => (
+                  <div 
+                    key={group.id} 
+                    onClick={() => toggleGroupSelection(group.id)}
+                    style={{ 
+                      border: '1px solid #ddd', 
+                      padding: '10px', 
+                      marginBottom: '10px', 
+                      backgroundColor: group.selected ? '#d0f0c0' : '#f0f0f0', 
+                      cursor: 'pointer' 
+                    }}
+                  >
+                    <Typography variant="subtitle2">{group.id}</Typography>
+                    <Typography variant="body2">{group.text.substring(0, 100)}...</Typography>
+                  </div>
+                ))}
+              </CardContent>
+            </Card>
+          )}
         </div>
 
         <div style={{ gridColumn: '2 / span 2' }}>
-          <Card>
-            <CardContent>
-              {isLoading && <LinearProgress />}
-              {error && (
-                <Alert severity="error" style={{ marginBottom: '10px' }}>
-                  {error}
-                </Alert>
-              )}
-              {responses.map((response, index) => (
-                <div key={index} style={{ marginBottom: '20px', position: 'relative' }}>
-                  <Typography variant="subtitle2" color="textSecondary" gutterBottom>
-                    Version {index + 1}
-                  </Typography>
-                  <ReactMarkdown
-                    rehypePlugins={[rehypeRaw]}
-                    remarkPlugins={[remarkGfm]}
-                    components={{
-                      p: ({ children }) => (
-                        <Typography variant="body1">{children}</Typography>
-                      ),
-                      h1: ({ children }) => (
-                        <Typography variant="h3">{children}</Typography>
-                      ),
-                      h2: ({ children }) => (
-                        <Typography variant="h4">{children}</Typography>
-                      ),
-                      h3: ({ children }) => (
-                        <Typography variant="h5">{children}</Typography>
-                      ),
-                      li: ({ children }) => (
-                        <Typography component="li" variant="body1" style={{ display: 'list-item' }}>{children}</Typography>
-                      ),
-                    }}
+          {isLoading && (
+            <LinearProgress
+              variant="determinate"
+              value={progress}
+              style={{ marginBottom: '10px' }}
+            />
+          )}
+          {error && (
+            <Alert severity="error" style={{ marginBottom: '10px' }}>
+              {error}
+            </Alert>
+          )}
+          {responses.map((response, index) => (
+            <Card key={index} style={{ marginBottom: '20px', position: 'relative' }}>
+              <CardContent style={{ position: 'relative' }}>
+                <Typography variant="subtitle2" color="textSecondary" gutterBottom>
+                  Version {index + 1}
+                </Typography>
+                <ReactMarkdown
+                  rehypePlugins={[rehypeRaw]}
+                  remarkPlugins={[remarkGfm]}
+                  components={{
+                    p: ({ children }) => (
+                      <Typography variant="body1">{children}</Typography>
+                    ),
+                    h1: ({ children }) => (
+                      <Typography variant="h3">{children}</Typography>
+                    ),
+                    h2: ({ children }) => (
+                      <Typography variant="h4">{children}</Typography>
+                    ),
+                    h3: ({ children }) => (
+                      <Typography variant="h5">{children}</Typography>
+                    ),
+                    li: ({ children }) => (
+                      <Typography component="li" variant="body1" style={{ display: 'list-item' }}>
+                        {children}
+                      </Typography>
+                    )
+                  }}
+                >
+                  {response}
+                </ReactMarkdown>
+                <div
+                  style={{
+                    position: 'absolute',
+                    top: '0',
+                    right: '0',
+                    display: 'flex',
+                    gap: '8px'
+                  }}
+                >
+                  <CopyOptions
+                    text={response}
+                    onCopy={(message) =>
+                      setNotification({ open: true, message, severity: 'success' })
+                    }
+                  />
+                  <Button
+                    variant="outlined"
+                    size="small"
+                    onClick={() => handleImprove(index)}
+                    disabled={isLoading}
                   >
-                    {response}
-                  </ReactMarkdown>
-                  <div style={{ position: 'absolute', top: '0', right: '0', display: 'flex', gap: '8px' }}>
-                    <CopyOptions 
-                      text={response} 
-                      onCopy={(message) => setNotification({ open: true, message, severity: 'success' })} 
-                    />
-                    {index === responses.length - 1 && (
-                      <Button
-                        variant="outlined"
-                        size="small"
-                        onClick={() => handleImprove(response)}
-                        disabled={isLoading}
-                      >
-                        Improve
-                      </Button>
-                    )}
-                  </div>
-                  {refinementOpen[index] && (
-                    <div style={{ marginTop: '10px' }}>
-                      <TextField
-                        fullWidth
-                        multiline
-                        rows={2}
-                        variant="outlined"
-                        placeholder="What would you like to improve about this description?"
-                        value={refinementInputs[index] || ''}
-                        onChange={(e) => {
-                          setRefinementInputs(prev => ({
-                            ...prev,
-                            [index]: e.target.value
-                          }));
-                        }}
-                      />
-                      <Button
-                        variant="contained"
-                        color="primary"
-                        onClick={() => handleRefinement(index)}
-                        style={{ marginTop: '10px' }}
-                        disabled={isLoading || !refinementInputs[index]}
-                      >
-                        Submit Improvement
-                      </Button>
-                    </div>
-                  )}
+                    Improve
+                  </Button>
                 </div>
-              ))}
-            </CardContent>
-          </Card>
+                {refinementOpen[index] && (
+                  <div style={{ marginTop: '10px' }}>
+                    <TextField
+                      fullWidth
+                      multiline
+                      rows={2}
+                      variant="outlined"
+                      placeholder="What would you like to improve about this description?"
+                      value={refinementInputs[index] || ''}
+                      onChange={(e) => {
+                        setRefinementInputs(prev => ({
+                          ...prev,
+                          [index]: e.target.value
+                        }));
+                      }}
+                    />
+                    <Button
+                      variant="contained"
+                      color="primary"
+                      onClick={() => handleRefinement(index)}
+                      style={{ marginTop: '10px' }}
+                      disabled={isLoading || !refinementInputs[index]}
+                    >
+                      Submit Improvement
+                    </Button>
+                  </div>
+                )}
+              </CardContent>
+            </Card>
+          ))}
         </div>
       </div>
       
@@ -737,11 +764,13 @@ function PdfUploadChatGPTApp() {
         </Alert>
       </Snackbar>
 
-      <PdfViewerDialog
-        file={selectedPdf}
-        open={Boolean(selectedPdf)}
-        onClose={() => setSelectedPdf(null)}
-      />
+      <Suspense fallback={<div>Loading PDF Viewer...</div>}>
+        <PdfViewerDialog
+          file={selectedPdf}
+          open={Boolean(selectedPdf)}
+          onClose={() => setSelectedPdf(null)}
+        />
+      </Suspense>
     </div>
   );
 }
