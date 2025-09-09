@@ -21,6 +21,10 @@ pdfjs.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pd
 
 const openAiApiKey = import.meta.env.VITE_OPENAI_API_KEY;
 
+// Debug logging
+console.log('API Key loaded:', openAiApiKey ? 'YES' : 'NO');
+console.log('API Key length:', openAiApiKey ? openAiApiKey.length : 0);
+
 // Custom styles for react-select to force a white background
 const customSelectStyles = {
   control: (provided, state) => ({
@@ -210,16 +214,79 @@ function PdfUploadChatGPTApp() {
       fileReader.onload = async function () {
         try {
           const typedArray = new Uint8Array(this.result);
+          console.log('Loading PDF document...');
           const pdf = await pdfjs.getDocument(typedArray).promise;
+          console.log('PDF loaded, pages:', pdf.numPages);
           const pageTexts = [];
+          
           for (let i = 1; i <= pdf.numPages; i++) {
+            console.log(`Processing page ${i}...`);
             const page = await pdf.getPage(i);
             const textContent = await page.getTextContent();
-            const pageText = textContent.items.map(item => item.str).join(" ");
+            console.log(`Page ${i} text items:`, textContent.items.length);
+            
+            let pageText = textContent.items.map(item => item.str).join(" ");
+            
+            // If no text found, try OCR on the rendered page
+            if (textContent.items.length === 0) {
+              console.log(`No text found on page ${i}, attempting OCR...`);
+              try {
+                const viewport = page.getViewport({ scale: 2.0 });
+                const canvas = document.createElement('canvas');
+                const context = canvas.getContext('2d');
+                canvas.width = viewport.width;
+                canvas.height = viewport.height;
+                
+                await page.render({ canvasContext: context, viewport }).promise;
+                const imageData = canvas.toDataURL('image/png');
+                
+                // Use OpenAI Vision API for OCR
+                const ocrResponse = await fetch('https://api.openai.com/v1/chat/completions', {
+                  method: 'POST',
+                  headers: {
+                    'Content-Type': 'application/json',
+                    'Authorization': `Bearer ${openAiApiKey}`
+                  },
+                  body: JSON.stringify({
+                    model: 'gpt-4o',
+                    messages: [{
+                      role: 'user',
+                      content: [
+                        {
+                          type: 'text',
+                          text: 'Extract all text from this image. Return only the raw text content, no formatting or explanations.'
+                        },
+                        {
+                          type: 'image_url',
+                          image_url: {
+                            url: imageData
+                          }
+                        }
+                      ]
+                    }],
+                    max_tokens: 2000
+                  })
+                });
+                
+                const ocrData = await ocrResponse.json();
+                if (ocrData.choices && ocrData.choices.length > 0) {
+                  pageText = ocrData.choices[0].message.content;
+                  console.log(`OCR extracted text for page ${i}:`, pageText.substring(0, 100) + '...');
+                } else {
+                  console.log(`OCR failed for page ${i}`);
+                }
+              } catch (ocrError) {
+                console.error(`OCR error for page ${i}:`, ocrError);
+              }
+            } else {
+              console.log(`Page ${i} text content:`, pageText.substring(0, 100) + '...');
+            }
+            
             pageTexts.push(`Page ${i}:\n${pageText}`);
           }
           resolve(pageTexts);
         } catch (err) {
+          console.error('PDF reading error:', err);
           reject(err);
         }
       };
@@ -265,6 +332,10 @@ function PdfUploadChatGPTApp() {
   }, [selectedFiles, readPDF]);
 
   const handleAnalyze = useCallback(async () => {
+    console.log('Generate Description button clicked!');
+    console.log('Selected files:', selectedFiles.length);
+    console.log('API Key available:', !!openAiApiKey);
+    
     setError(null);
     setResponses([]);
     setProgress(0);
@@ -273,17 +344,33 @@ function PdfUploadChatGPTApp() {
       setApiStatus('loading');
       let groupsToProcess;
       if (previewGroups.length > 0) {
+        console.log('Using preview groups:', previewGroups.length);
         groupsToProcess = previewGroups.filter(g => g.selected).map(g => g.text);
       } else {
+        console.log('Processing files directly...');
         groupsToProcess = [];
         for (const file of selectedFiles) {
+          console.log('Reading PDF:', file.name);
           const pages = await readPDF(file);
+          console.log('PDF pages read:', pages.length);
+          
+          // Debug: Show what text was extracted
+          console.log('Extracted text from PDF:');
+          pages.forEach((pageText, index) => {
+            console.log(`Page ${index + 1}:`, pageText.substring(0, 200) + '...');
+          });
+          
           const invoiceGroups = groupInvoices(pages);
+          console.log('Invoice groups found:', invoiceGroups.length);
           groupsToProcess.push(...invoiceGroups);
         }
       }
+      console.log('Total groups to process:', groupsToProcess.length);
       const totalGroups = groupsToProcess.length;
+      console.log('Starting API calls for', totalGroups, 'groups');
+      
       for (let i = 0; i < totalGroups; i++) {
+        console.log(`Processing group ${i + 1}/${totalGroups}`);
         const groupText = groupsToProcess[i];
         const requestBody = generateCombinedPrompt(groupText, selectedType, mileage);
         if (callToAction) {
@@ -292,6 +379,8 @@ function PdfUploadChatGPTApp() {
         if (toneStyle) {
           requestBody.messages[1].content += `\n\nTone & Style: ${toneStyle}`;
         }
+        
+        console.log('Making API call to OpenAI...');
         const response = await fetch("https://api.openai.com/v1/chat/completions", {
           method: "POST",
           headers: {
@@ -300,7 +389,10 @@ function PdfUploadChatGPTApp() {
           },
           body: JSON.stringify(requestBody),
         });
+        
+        console.log('API response status:', response.status);
         const data = await response.json();
+        console.log('API response data:', data);
         let generatedResponse = "No Response";
         if (data.choices && data.choices.length > 0) {
           generatedResponse = data.choices[0].message.content;
