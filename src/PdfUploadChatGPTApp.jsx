@@ -17,6 +17,65 @@ import CopyOptions from './components/CopyOptions';
 // Use Logo 2 for upload section icon
 import logo2 from './icons/Logo 2.png';
 
+const bulletLineRegex = /^\s*[-*•]\s+/;
+
+const reorderResponseSections = (response) => {
+  if (!response) return response;
+
+  const normalized = response.replace(/\r\n/g, '\n');
+  const lines = normalized.split('\n');
+
+  let bulletStart = -1;
+  for (let i = 0; i < lines.length; i++) {
+    if (bulletLineRegex.test(lines[i])) {
+      bulletStart = i;
+      break;
+    }
+  }
+
+  if (bulletStart === -1) {
+    return response;
+  }
+
+  let featuresStart = bulletStart;
+  for (let j = bulletStart - 1; j >= 0; j--) {
+    const trimmed = lines[j].trim();
+    if (trimmed === '') {
+      featuresStart = j + 1;
+      break;
+    }
+    if (/features/i.test(trimmed) || /options/i.test(trimmed) || /:\s*$/.test(trimmed)) {
+      featuresStart = j;
+      continue;
+    }
+    featuresStart = j + 1;
+    break;
+  }
+
+  let featuresEnd = bulletStart;
+  for (let k = bulletStart; k < lines.length; k++) {
+    if (bulletLineRegex.test(lines[k])) {
+      featuresEnd = k;
+      continue;
+    }
+    if (lines[k].trim() === '') {
+      featuresEnd = k;
+      continue;
+    }
+    break;
+  }
+
+  const featuresSection = lines.slice(featuresStart, featuresEnd + 1).join('\n').trim();
+  const descriptionLines = [...lines.slice(0, featuresStart), ...lines.slice(featuresEnd + 1)];
+  const descriptionSection = descriptionLines.join('\n').trim();
+
+  if (!featuresSection || !descriptionSection) {
+    return response;
+  }
+
+  return `${featuresSection}\n\n${descriptionSection}`;
+};
+
 pdfjs.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
 
 const openAiApiKey = import.meta.env.VITE_OPENAI_API_KEY;
@@ -397,6 +456,7 @@ function PdfUploadChatGPTApp() {
         if (data.choices && data.choices.length > 0) {
           generatedResponse = data.choices[0].message.content;
         }
+        generatedResponse = reorderResponseSections(generatedResponse);
         setResponses(prev => [...prev, generatedResponse]);
         setProgress(Math.round(((i + 1) / totalGroups) * 100));
       }
@@ -560,7 +620,8 @@ function PdfUploadChatGPTApp() {
     setError(null);
 
     try {
-      const improvedResponse = await improveDescription(responses[index], refinementPrompt);
+      const improvedResponseRaw = await improveDescription(responses[index], refinementPrompt);
+      const improvedResponse = reorderResponseSections(improvedResponseRaw);
       setResponses(prev => [...prev, improvedResponse]);
       setRefinementOpen(prev => ({
         ...prev,
