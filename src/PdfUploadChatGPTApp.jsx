@@ -78,11 +78,8 @@ const reorderResponseSections = (response) => {
 
 pdfjs.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
 
-const openAiApiKey = import.meta.env.VITE_OPENAI_API_KEY;
-
-// Debug logging
-console.log('API Key loaded:', openAiApiKey ? 'YES' : 'NO');
-console.log('API Key length:', openAiApiKey ? openAiApiKey.length : 0);
+// OpenAI API calls are now handled through Netlify functions
+// No API key needed in client code
 
 // Custom styles for react-select to force a white background
 const customSelectStyles = {
@@ -299,12 +296,11 @@ function PdfUploadChatGPTApp() {
                 await page.render({ canvasContext: context, viewport }).promise;
                 const imageData = canvas.toDataURL('image/png');
                 
-                // Use OpenAI Vision API for OCR
-                const ocrResponse = await fetch('https://api.openai.com/v1/chat/completions', {
+                // Use OpenAI Vision API for OCR through Netlify function
+                const ocrResponse = await fetch('/.netlify/functions/openai-proxy', {
                   method: 'POST',
                   headers: {
-                    'Content-Type': 'application/json',
-                    'Authorization': `Bearer ${openAiApiKey}`
+                    'Content-Type': 'application/json'
                   },
                   body: JSON.stringify({
                     model: 'gpt-4o',
@@ -393,7 +389,7 @@ function PdfUploadChatGPTApp() {
   const handleAnalyze = useCallback(async () => {
     console.log('Generate Description button clicked!');
     console.log('Selected files:', selectedFiles.length);
-    console.log('API Key available:', !!openAiApiKey);
+    console.log('Using Netlify function for OpenAI API calls');
     
     setError(null);
     setResponses([]);
@@ -439,12 +435,11 @@ function PdfUploadChatGPTApp() {
           requestBody.messages[1].content += `\n\nTone & Style: ${toneStyle}`;
         }
         
-        console.log('Making API call to OpenAI...');
-        const response = await fetch("https://api.openai.com/v1/chat/completions", {
+        console.log('Making API call to OpenAI through Netlify function...');
+        const response = await fetch("/.netlify/functions/openai-proxy", {
           method: "POST",
           headers: {
             "Content-Type": "application/json",
-            Authorization: `Bearer ${openAiApiKey}`,
           },
           body: JSON.stringify(requestBody),
         });
@@ -584,11 +579,10 @@ function PdfUploadChatGPTApp() {
       { role: "user", content: `Please improve this description based on the following request: ${improvementRequest}. Maintain the same format and style.` }
     ];
 
-    const response = await fetch('https://api.openai.com/v1/chat/completions', {
+    const response = await fetch('/.netlify/functions/openai-proxy', {
       method: 'POST',
       headers: {
-        'Content-Type': 'application/json',
-        'Authorization': `Bearer ${openAiApiKey}`
+        'Content-Type': 'application/json'
       },
       body: JSON.stringify({
         model: 'gpt-4-turbo-preview',
