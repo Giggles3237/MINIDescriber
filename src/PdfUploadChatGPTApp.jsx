@@ -443,10 +443,28 @@ function PdfUploadChatGPTApp() {
           },
           body: JSON.stringify(requestBody),
         });
-        
+
         console.log('API response status:', response.status);
+
+        // Handle non-2xx responses (e.g., rate limits) with clearer messaging
+        if (!response.ok) {
+          let errorDetail = response.statusText || 'Unknown error';
+          try {
+            const errorData = await response.json();
+            errorDetail = errorData?.error?.message || JSON.stringify(errorData);
+          } catch (parseError) {
+            console.error('Failed to parse error response:', parseError);
+          }
+          throw new Error(`OpenAI request failed (${response.status}): ${errorDetail}`);
+        }
+
         const data = await response.json();
         console.log('API response data:', data);
+
+        if (data?.error) {
+          throw new Error(data.error.message || 'OpenAI returned an error response');
+        }
+
         let generatedResponse = "No Response";
         if (data.choices && data.choices.length > 0) {
           generatedResponse = data.choices[0].message.content;
