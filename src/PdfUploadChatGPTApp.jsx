@@ -5,6 +5,7 @@ import CardContent from '@mui/material/CardContent';
 import Button from '@mui/material/Button';
 import Typography from '@mui/material/Typography';
 import { CircularProgress, Snackbar, Alert, Accordion, AccordionSummary, AccordionDetails, TextField, LinearProgress, Dialog, DialogTitle, DialogContent, DialogActions } from '@mui/material';
+import IconButton from '@mui/material/IconButton';
 import Select from 'react-select';
 import ReactMarkdown from 'react-markdown';
 import rehypeRaw from 'rehype-raw';
@@ -12,6 +13,8 @@ import remarkGfm from 'remark-gfm';
 import * as pdfjs from 'pdfjs-dist/legacy/build/pdf';
 // MUI Icon for accordion expansion
 import ExpandMoreIcon from '@mui/icons-material/ExpandMore';
+import WbSunnyRoundedIcon from '@mui/icons-material/WbSunnyRounded';
+import NightlightRoundRoundedIcon from '@mui/icons-material/NightlightRoundRounded';
 import CopyOptions from './components/CopyOptions';
 
 // Use Logo 2 for upload section icon
@@ -81,25 +84,38 @@ pdfjs.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pd
 // OpenAI API calls are now handled through Netlify functions
 // No API key needed in client code
 
-// Custom styles for react-select to force a white background
-const customSelectStyles = {
+const getCustomSelectStyles = (isDarkMode) => ({
   control: (provided, state) => ({
     ...provided,
     fontFamily: 'sans-serif',
-    backgroundColor: 'white',
-    borderColor: state.isFocused ? '#3f51b5' : provided.borderColor,
+    backgroundColor: isDarkMode ? '#1f2937' : '#ffffff',
+    borderColor: state.isFocused ? '#3f51b5' : (isDarkMode ? '#374151' : provided.borderColor),
+    color: isDarkMode ? '#f9fafb' : '#111827',
     boxShadow: state.isFocused ? '0 0 0 1px #3f51b5' : provided.boxShadow,
   }),
   menu: (provided) => ({
     ...provided,
     fontFamily: 'sans-serif',
-    backgroundColor: 'white',
+    backgroundColor: isDarkMode ? '#111827' : '#ffffff',
+    color: isDarkMode ? '#f9fafb' : '#111827',
   }),
-  option: (provided) => ({
+  singleValue: (provided) => ({
+    ...provided,
+    color: isDarkMode ? '#f9fafb' : '#111827',
+  }),
+  input: (provided) => ({
+    ...provided,
+    color: isDarkMode ? '#f9fafb' : '#111827',
+  }),
+  option: (provided, state) => ({
     ...provided,
     fontFamily: 'sans-serif',
+    color: isDarkMode ? '#f9fafb' : '#111827',
+    backgroundColor: state.isFocused
+      ? (isDarkMode ? '#1f2937' : '#f3f4f6')
+      : (isDarkMode ? '#111827' : '#ffffff'),
   })
-};
+});
 
 export const systemMessage = `
 You are an expert Car Sales Manager. Your knowledge of vehicles is exact and up to date. All brands, all models, options, specs, and features are known to you.
@@ -211,7 +227,7 @@ function extractVehicleInfo(text) {
   };
 }
 
-function PdfUploadChatGPTApp() {
+function PdfUploadChatGPTApp({ isDarkMode = false, onToggleDarkMode }) {
   const [selectedFiles, setSelectedFiles] = useState([]);
   const [selectedType, setSelectedType] = useState("MINI");
   const [responses, setResponses] = useState([]);
@@ -662,6 +678,11 @@ function PdfUploadChatGPTApp() {
 
   return (
     <div style={{ width: '100%', maxWidth: '1200px', margin: '0 auto' }}>
+      <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: '8px' }}>
+        <IconButton onClick={onToggleDarkMode} aria-label="toggle dark mode">
+          {isDarkMode ? <WbSunnyRoundedIcon /> : <NightlightRoundRoundedIcon />}
+        </IconButton>
+      </div>
       <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '20px', marginTop: '20px' }}>
         <div style={{ gridColumn: '1' }}>
           <Card>
@@ -725,7 +746,7 @@ function PdfUploadChatGPTApp() {
                   options={invoiceOptions}
                   value={invoiceOptions.find(option => option.value === selectedType)}
                   onChange={(option) => setSelectedType(option.value)}
-                  styles={customSelectStyles}
+                  styles={getCustomSelectStyles(isDarkMode)}
                 />
               </div>
               <div style={{ marginTop: '20px' }}>
@@ -736,7 +757,7 @@ function PdfUploadChatGPTApp() {
                   options={toneOptions}
                   value={toneOptions.find(option => option.value === toneStyle)}
                   onChange={(option) => setToneStyle(option.value)}
-                  styles={customSelectStyles}
+                  styles={getCustomSelectStyles(isDarkMode)}
                 />
               </div>
               <Button
