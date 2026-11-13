@@ -652,7 +652,8 @@ function PdfUploadChatGPTApp({ isDarkMode = false, onToggleDarkMode }) {
     ];
 
     return requestVehicleDescription({
-        model: 'gpt-4-turbo-preview',
+        // Use the same available model as initial description generation.
+        model: 'gpt-4o-mini',
         messages: messages,
         temperature: 0.7,
       }, getCertificationPolicy(sourceDocument, certificationSetting));
